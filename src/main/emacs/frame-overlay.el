@@ -172,9 +172,9 @@ This is only used when `frame-overlay-auto-sync' is non-nil."
 Example:
 
   (setq frame-overlay-playlist
-        '(\"C:/images/a.png\"
-          \"C:/images/b.png\"
-          \"C:/images/c.png\"))"
+        (list \"C:/images/a.png\"
+              \"C:/images/b.png\"
+              \"C:/images/c.png\"))"
   :type '(repeat file))
 
 (defcustom frame-overlay-playlist-interval 5.0
@@ -513,7 +513,7 @@ When nil, playlist playback stops after the last image."
          (window-id (frame-parameter frame 'window-id))
          (outer-id (frame-parameter frame 'outer-window-id)))
     (frame-overlay--log "window-id=%S outer-window-id=%S window-system=%S"
-             window-id outer-id (window-system frame))))
+                        window-id outer-id (window-system frame))))
 
 (defun frame-overlay-show (&optional frame)
   "Show the solid-color prototype overlay for FRAME."
@@ -658,7 +658,8 @@ When the last image is reached:
 
      (t
       (frame-overlay-playlist--stop-timer)
-      (frame-overlay--log "Frame overlay playlist finished")))))
+      (frame-overlay--log "Frame overlay playlist finished")))
+    t))
 
 (defun frame-overlay-playlist-previous ()
   "Show the previous image in `frame-overlay-playlist'.
@@ -711,8 +712,8 @@ Interactively, use a prefix argument (\\[universal-argument]) to reset."
          #'frame-overlay-playlist-next))
 
   (frame-overlay--log "Frame overlay playlist started: %d images, %.3g sec"
-           (length frame-overlay-playlist)
-           frame-overlay-playlist-interval)
+                      (length frame-overlay-playlist)
+                      frame-overlay-playlist-interval)
 
   t)
 
@@ -737,9 +738,10 @@ Frame-position synchronization continues according to
   (interactive)
   (frame-overlay-playlist--stop-timer)
   (frame-overlay--stop-timer)
-  (frame-overlay-module-hide)
+  
   (unless (frame-overlay-module-hide)
     (error "Failed to hide frame overlay"))
+  
   t)
 
 (defun frame-overlay-destroy ()
@@ -750,17 +752,18 @@ The configured playlist itself is not modified."
   (interactive)
   (frame-overlay-playlist--stop-timer)
   (frame-overlay--stop-timer)
-  (frame-overlay-module-destroy)
+
+  (unless (frame-overlay-module-destroy)
+    (error "Failed to destroy frame overlay"))
+  
   (setq frame-overlay--file nil
         frame-overlay--frame nil
         frame-overlay-playlist--index 0)
-  (unless (frame-overlay-module-destroy)
-    (error "Failed to destroy frame overlay"))
+  
   t)
 
 (defun frame-overlay--directory-png-files (directory &optional recursive)
-  "DIRECTORY 内の PNG ファイル一覧を返す。
-RECURSIVE が非nilなら、サブディレクトリも探索する。"
+  "DIRECTORY 内の PNG ファイル一覧を返す。RECURSIVE が非nilなら、サブディレクトリも探索する。"
   (let ((directory (file-name-as-directory (expand-file-name directory))))
     (unless (file-directory-p directory)
       (user-error "Directory does not exist: %s" directory))
@@ -774,11 +777,9 @@ RECURSIVE が非nilなら、サブディレクトリも探索する。"
      #'string-lessp)))
 
 (defun frame-overlay-playlist-load-directory (&optional directory)
-  "DIRECTORY から PNG ファイル一覧を読み込み、
-`frame-overlay-playlist' を再構築する。
+  "DIRECTORY から PNG ファイル一覧を読み込み、`frame-overlay-playlist' を再構築する。
 
-DIRECTORY を省略した場合は
-`frame-overlay-playlist-directory' を使う。"
+DIRECTORY を省略した場合は`frame-overlay-playlist-directory' を使う。"
   (interactive)
   (let ((directory (or directory frame-overlay-playlist-directory)))
     ;; 先に directory が設定されているか確認する。
@@ -796,14 +797,13 @@ DIRECTORY を省略した場合は
             frame-overlay-playlist--index 0)
 
       (frame-overlay--log "Frame overlay playlist loaded: %d PNG files from %s"
-               (length files)
-               directory)
+                          (length files)
+                          directory)
 
       t)))
 
 (defun frame-overlay-playlist-set-directory (directory)
-  "プレイリスト用ディレクトリを DIRECTORY に設定し、
-PNG一覧を読み込む。"
+  "プレイリスト用ディレクトリを DIRECTORY に設定し、PNG一覧を読み込む。"
   (interactive "DPlaylist directory: ")
   (setq frame-overlay-playlist-directory directory)
   (frame-overlay-playlist-load-directory directory))
