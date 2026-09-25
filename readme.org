@@ -255,7 +255,8 @@ Specifies the update interval for automatic tracking in seconds.
 0.10 = 100 ms = approx. 10 times/second
 0.25 = 250 ms = approx. 4 times/second
 
-Setting a smaller value results in smoother tracking, but increases the number of times the synchronization process is called.
+Setting a smaller value results in smoother tracking,
+but increases the number of times the synchronization process is called.
 The default value is `0.05`.
 #+end_example
 
@@ -283,7 +284,8 @@ UpdateLayeredWindow
 Display transparently on the frame
 
 Any transparent areas in the PNG are rendered as transparent.
-Additionally, since the overlay allows mouse interactions to pass through, you can click on the image to interact with the Emacs interface behind it.
+Additionally, since the overlay allows mouse interactions to pass through,
+you can click on the image to interact with the Emacs interface behind it.
 #+end_example
 
 *** frame-overlay-refresh
@@ -302,7 +304,8 @@ frame-overlay-margin-x
 frame-overlay-margin-y
 frame-overlay-image-alpha
 
-If you change any of these settings and then call this function, the changes will be reflected in the display.
+If you change any of these settings and then call this function,
+the changes will be reflected in the display.
 
 Calling this function while a playlist is playing will not pause the playlist.
 #+end_example
