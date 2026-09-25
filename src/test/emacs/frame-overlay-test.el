@@ -20,3 +20,11 @@
     (should-error
      (frame-overlay--position-code))))
 
+(ert-deftest frame-overlay-test-imaeg-options-valid ()
+  (let ((frame-overlay-scale 1.0)
+        (frame-overlay-image-alpha 255)
+        (frame-overlay-margin-x 24)
+        (frame-overlay-margin-y 24))
+    (frame-overlay--validate-image-options)))
+
+
