@@ -4,7 +4,6 @@
 
 [[file:readme_ja.org][日本語]]
 
-* emacs-frame-overlay
 This package displays transparent PNG images over an Emacs frame
 using a click-through native Windows overlay.
 
@@ -15,21 +14,21 @@ This package has currently been tested only on Windows 11.
 
 Only PNG image files are currently supported.
 
-** Requirements
-*** Platform
+* Requirements
+** Platform
 - Windows 11 (tested)
 - Native Windows Emacs 29.1 or later
 
-*** Build tools
+** Build tools
 - MSYS2 UCRT64
 - g++
 - CMake
 - mingw32-make
 
-*** Image format
+** Image format
 - PNG
 
-** Installation
+* Installation
 Using use-package is recommended.
 
 When =frame-overlay-ensure-module= is called, the native dynamic module
@@ -46,7 +45,7 @@ the native source files have been updated.
     (frame-overlay-ensure-module))
 #+end_src
 
-*** NOTE
+** NOTE
 Make sure the required build tools are available in Emacs's PATH.
 
 #+begin_src emacs-lisp
@@ -55,8 +54,8 @@ Make sure the required build tools are available in Emacs's PATH.
   (executable-find "mingw32-make")
 #+end_src
 
-** Configuration
-*** Basic configuration example
+* Configuration
+** Basic configuration example
 #+begin_src emacs-lisp
   (setq frame-overlay-scale 0.35)
   (setq frame-overlay-position 'bottom-right)
@@ -70,12 +69,12 @@ Make sure the required build tools are available in Emacs's PATH.
   (setq frame-overlay-verbose nil)
 #+end_src
 
-*** Single image example
+** Single image example
 #+begin_src emacs-lisp
   (frame-overlay-show-file "C:/path/to/test.png")
 #+end_src
 
-*** Playlist examples
+** Playlist examples
 Using a directory:
 
 #+begin_src emacs-lisp
@@ -91,15 +90,15 @@ Using full file paths:
               "C:/images/c.png"))
 #+end_src
 
-** API
-*** Image Configuration
-**** frame-overlay-scale
-***** Usage
+* API
+** Image Configuration
+*** frame-overlay-scale
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-scale 0.35)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the scale factor used to display PNG images.
 1.0 is the actual size.
@@ -112,13 +111,13 @@ Specifies the scale factor used to display PNG images.
 The default value is 1.0.
 #+end_example
 
-**** frame-overlay-position
-***** Usage
+*** frame-overlay-position
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-position 'bottom-right)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the position of the image within the frame.
 The default value is `bottom-right`.
@@ -153,13 +152,13 @@ center
 +--------------------+
 #+end_example
 
-**** frame-overlay-margin-x
-***** Usage
+*** frame-overlay-margin-x
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-margin-x 24)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the horizontal margin in pixels.
 
@@ -169,13 +168,13 @@ for `top-right` and `bottom-right`, this is the distance from the right edge.
 The default value is `24`.
 #+end_example
 
-**** frame-overlay-margin-y
-***** Usage
+*** frame-overlay-margin-y
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-margin-y 24)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the vertical margin in pixels.
 
@@ -185,13 +184,13 @@ for bottom alignment, it is the distance from the bottom edge.
 The default value is `24`.
 #+end_example
 
-**** frame-overlay-image-alpha
-***** Usage
+*** frame-overlay-image-alpha
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-image-alpha 255)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the overall opacity (alpha) of the image.
 The range is 0 to 255.
@@ -223,13 +222,13 @@ Therefore, transparent areas in the original PNG remain transparent.
 The default value is 255.
 #+end_example
 
-**** frame-overlay-auto-sync
-***** Usage
+*** frame-overlay-auto-sync
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-auto-sync t)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies whether the overlay automatically follows the Emacs frame
 when the frame is moved or resized.
@@ -242,13 +241,13 @@ the overlay position rather than monitoring Win32 events directly.
 The default value is t.
 #+end_example
 
-**** frame-overlay-sync-interval
-***** Usage
+*** frame-overlay-sync-interval
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-sync-interval 0.05)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the update interval for automatic tracking in seconds.
 
@@ -260,14 +259,14 @@ Setting a smaller value results in smoother tracking, but increases the number o
 The default value is `0.05`.
 #+end_example
 
-*** Image operations
-**** frame-overlay-show-file
-***** Usage
+** Image operations
+*** frame-overlay-show-file
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-show-file "C:/path/to/test.png")
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Displays the specified PNG image on the current Emacs frame.
 Internally, the following processing takes place:
@@ -287,13 +286,13 @@ Any transparent areas in the PNG are rendered as transparent.
 Additionally, since the overlay allows mouse interactions to pass through, you can click on the image to interact with the Emacs interface behind it.
 #+end_example
 
-**** frame-overlay-refresh
-***** Usage
+*** frame-overlay-refresh
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-refresh)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Reloads and redisplays the currently displayed PNG image using the current settings.
 
@@ -307,45 +306,45 @@ If you change any of these settings and then call this function, the changes wil
 
 Calling this function while a playlist is playing will not pause the playlist.
 #+end_example
-**** frame-overlay-hide
-***** Usage
+*** frame-overlay-hide
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-hide)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Hides the overlay image.
 Playlist playback and automatic frame synchronization are stopped.
 #+end_example
 
-**** frame-overlay-destroy
-***** Usage
+*** frame-overlay-destroy
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-destroy)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Destroys the overlay window and releases the native resources
 associated with the loaded image.
 Playlist playback and automatic frame synchronization are also stopped.
 #+end_example
 
-**** frame-overlay-sync-now
-***** Usage
+*** frame-overlay-sync-now
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-sync-now)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Immediately synchronizes the overlay position with the current Emacs frame.
 #+end_example
 
-*** Playlist configuration
-**** frame-overlay-playlist
-***** Usage
+** Playlist configuration
+*** frame-overlay-playlist
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-playlist
         (list "C:/images/a.png"
@@ -353,41 +352,41 @@ Immediately synchronizes the overlay position with the current Emacs frame.
               "C:/images/c.png"))
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the list of PNG files used by the playlist.
 #+end_example
 
-**** frame-overlay-playlist-directory
-***** Usage
+*** frame-overlay-playlist-directory
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-playlist-directory "C:/images/")
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the directory containing PNG files used to build the playlist.
 #+end_example
 
-**** frame-overlay-playlist-interval
-***** Usage
+*** frame-overlay-playlist-interval
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-playlist-interval 5.0)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the number of seconds between image changes.
 The default value is 5.0 seconds.
 #+end_example
 
-**** frame-overlay-playlist-loop
-***** Usage
+*** frame-overlay-playlist-loop
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-playlist-loop t)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 When non-nil, playback returns to the first image after the last image.
 
@@ -396,13 +395,13 @@ When nil, automatic image switching stops after the last image is reached.
 The default value is t.
 #+end_example
 
-**** frame-overlay-playlist-recursive
-***** Usage
+*** frame-overlay-playlist-recursive
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-playlist-recursive nil)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 When non-nil, PNG files are searched recursively in subdirectories of
 frame-overlay-playlist-directory.
@@ -410,108 +409,108 @@ frame-overlay-playlist-directory.
 The default value is nil.
 #+end_example
 
-*** Playlist operations
-**** frame-overlay-playlist-start
-***** Usage
+** Playlist operations
+*** frame-overlay-playlist-start
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-playlist-start)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Starts playing the specified playlist.
 If `frame-overlay-auto-sync` is non-nil, the frame auto-sync timer also starts.
 #+end_example
 
-**** frame-overlay-playlist-stop
-***** Usage
+*** frame-overlay-playlist-stop
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-playlist-stop)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Stops playlist playback.
 The currently displayed image will remain on the screen.
 Automatic frame synchronization continues.
 #+end_example
 
-**** frame-overlay-playlist-restart
-***** Usage
+*** frame-overlay-playlist-restart
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-playlist-restart)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Restarts playlist playback from the first image.
 #+end_example
 
-**** frame-overlay-playlist-next
-***** Usage
+*** frame-overlay-playlist-next
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-playlist-next)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Displays the next image in the playlist.
 #+end_example
 
-**** frame-overlay-playlist-previous
-***** Usage
+*** frame-overlay-playlist-previous
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-playlist-previous)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Displays the previous image in the playlist.
 #+end_example
 
-**** frame-overlay-playlist-show-index
-***** Usage
+*** frame-overlay-playlist-show-index
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-playlist-show-index 2)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Displays the image at the specified index.
 Indexes start at 0.
 #+end_example
 
-**** frame-overlay-playlist-set-directory
-***** Usage
+*** frame-overlay-playlist-set-directory
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-playlist-set-directory "C:/images/")
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Sets the playlist directory and loads the list of PNG files from that directory.
 Playback does not start automatically.
 #+end_example
 
-**** frame-overlay-playlist-load-directory
-***** Usage
+*** frame-overlay-playlist-load-directory
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-playlist-load-directory "C:/images/")
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Loads the list of PNG files from DIRECTORY and rebuilds frame-overlay-playlist.
 If DIRECTORY is omitted, frame-overlay-playlist-directory is used.
 #+end_example
 
-**** frame-overlay-playlist-start-directory
-***** Usage
+*** frame-overlay-playlist-start-directory
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-playlist-start-directory "C:/images/")
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Builds a playlist from PNG files in the specified directory and starts
 playback immediately.
@@ -520,90 +519,90 @@ When frame-overlay-playlist-recursive is non-nil, subdirectories are
 searched recursively.
 #+end_example
 
-*** General / Debugging
-**** frame-overlay-verbose
-***** Usage
+** General / Debugging
+*** frame-overlay-verbose
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-verbose nil)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 When non-nil, informational log messages are displayed in the minibuffer.
 The default is `nil`.
 #+end_example
 
-*** Native module configuration
-**** frame-overlay-build-directory
-***** Usage
+** Native module configuration
+*** frame-overlay-build-directory
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-build-directory "C:/path/to/build/")
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the CMake build directory.
 You usually do not need to change this.
 By default, the package's `src/build` directory is used.
 #+end_example
 
-**** frame-overlay-emacs-include-directory
-***** Usage
+*** frame-overlay-emacs-include-directory
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-emacs-include-directory "C:/path/to/emacs/include")
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the directory where `emacs-module.h` is located.
 If set to `nil`, it will be automatically detected from Emacs's `invocation-directory`.
 You can usually leave this set to `nil`.
 #+end_example
 
-**** frame-overlay-cmake-program
-***** Usage
+*** frame-overlay-cmake-program
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-cmake-program "cmake")
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the CMake executable to use for building native modules.
 The default is “cmake”.
 #+end_example
 
-**** frame-overlay-cmake-generator
-***** Usage
+*** frame-overlay-cmake-generator
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-cmake-generator "MinGW Makefiles")
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the CMake generator.
 The default is “MinGW Makefiles.”
 If you specify `nil`, the default CMake generator is used.
 #+end_example
 
-**** frame-overlay-build-type
-***** Usage
+*** frame-overlay-build-type
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-build-type "Release")
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the CMake build type for the native module.
 The default is “Release.”
 #+end_example
 
-**** frame-overlay-module-basename
-***** Usage
+*** frame-overlay-module-basename
+**** Usage
 #+begin_src emacs-lisp
   (setq frame-overlay-module-basename "frame-overlay-module")
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Specifies the base filename for the generated dynamic module.
 You usually do not need to change this.
@@ -612,14 +611,14 @@ The default value is “frame-overlay-module”.
 On Windows, `frame-overlay-module.dll` is typically generated.
 #+end_example
 
-*** Native module operations
-**** frame-overlay-ensure-module
-***** Usage
+** Native module operations
+*** frame-overlay-ensure-module
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-ensure-module)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Ensures that the native frame-overlay module is available.
 
@@ -628,33 +627,33 @@ are newer than the existing module, it is built with CMake.
 The resulting module is then loaded into Emacs.
 #+end_example
 
-**** frame-overlay-build-module
-***** Usage
+*** frame-overlay-build-module
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-build-module)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 If the DLL is already loaded into Emacs, restart Emacs before calling
 this function. Windows does not allow the loaded DLL to be safely
 overwritten in place.
 #+end_example
 
-**** frame-overlay-load-module
-***** Usage
+*** frame-overlay-load-module
+**** Usage
 #+begin_src emacs-lisp
   (frame-overlay-load-module)
 #+end_src
 
-***** Description
+**** Description
 #+begin_example
 Load a pre-built dynamic module into Emacs.
 Since `frame-overlay-ensure-module` is typically used,
 there is no need to call this function directly.
 #+end_example
 
-** Manual build
+* Manual build
 1) Change to the =src= directory.
 2) Run =_build.sh= with the directory containing =emacs-module.h= as the first argument.
    
@@ -668,7 +667,7 @@ there is no need to call this function directly.
      ./_build.sh /c/software/msys2/ucrt64/local/emacs/include
    #+end_src
 
-** Development
+* Development
 
 The release source code is located under =src/=.
 
@@ -699,12 +698,12 @@ The current release implementation is maintained under =src/=.
 Files under =_prototype/= are historical experiments and are not
 part of the release build.
 
-** Prototype history
+* Prototype history
 
 Early experiments are kept under =_prototype/= as historical snapshots.
 They are not used by the release build.
 
-*** 01_transparent_square
+** 01_transparent_square
 Initial Win32 overlay prototype.
 
 This prototype verified:
@@ -714,7 +713,7 @@ This prototype verified:
 - click-through mouse operation
 - synchronization with the Emacs frame
 
-*** 02_transparent_image
+** 02_transparent_image
 Added PNG image support using Windows Imaging Component (WIC).
 
 This prototype introduced:
@@ -725,7 +724,7 @@ This prototype introduced:
 - configurable positioning and margins
 - =UpdateLayeredWindow=
 
-*** 03_playlist_images
+** 03_playlist_images
 Added image playlist support.
 
 This prototype introduced:
@@ -739,7 +738,7 @@ Reusing the overlay HWND instead of recreating it for every image
 also fixed an issue where the overlay could disappear when focus
 moved from Emacs to another application.
 
-** Limitations
+* Limitations
 - Only native Windows builds of Emacs are supported.
 - Only PNG images are currently supported.
 - Overlay positioning is synchronized using an Emacs timer.
@@ -747,7 +746,7 @@ moved from Emacs to another application.
 
   Restart Emacs before rebuilding a module that has already been loaded.
 
-** License
+* License
 This project is licensed under the GNU General Public License v3.0
 or later.
 
