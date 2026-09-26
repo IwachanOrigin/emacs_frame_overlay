@@ -701,6 +701,14 @@ The current release implementation is maintained under =src/=.
 Files under =_prototype/= are historical experiments and are not
 part of the release build.
 
+** Running tests
+
+ERT unit tests can be run from the =src= directory:
+
+#+begin_src shell
+  ./_test.sh /c/path/to/emacs/bin/emacs.exe
+#+end_src
+
 * Prototype history
 
 Early experiments are kept under =_prototype/= as historical snapshots.

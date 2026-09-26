@@ -687,6 +687,14 @@ Windows では、Emacs の実行中は、読み込まれた DLL を安全に置�
 =_prototype/= ディレクトリ下のファイルは、過去に実施された実験的なものであり、
 リリースビルドには含まれていません。
 
+** 単体テスト実行
+
+ERTのユニットテストは、 =src= ディレクトリから実行できます。
+
+#+begin_src shell
+  ./_test.sh /c/path/to/emacs/bin/emacs.exe
+#+end_src
+
 * Prototype history
 
 初期の実験的なコードは、歴史的なスナップショットとして =_prototype/= 配下に保存されています。
