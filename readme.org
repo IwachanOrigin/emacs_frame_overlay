@@ -35,14 +35,88 @@ When =frame-overlay-ensure-module= is called, the native dynamic module
 is built automatically with CMake if it has not been built yet or if
 the native source files have been updated.
 
+** Minimal setup
 #+begin_src emacs-lisp
-  (use-package frame-overlay
-    :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-              :rev "v0.1.0"
-              :lisp-dir "src/main/emacs")
-    :demand t
-    :config
-    (frame-overlay-ensure-module))
+(use-package frame-overlay
+  :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+       :rev "v0.1.0"
+       :lisp-dir "src/main/emacs")
+  :demand t
+  :config
+  (frame-overlay-ensure-module))
+#+end_src
+
+** Single image example
+#+begin_src emacs-lisp
+(use-package frame-overlay
+  :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+       :rev "v0.1.0"
+       :lisp-dir "src/main/emacs")
+  :demand t
+
+  :custom
+  (frame-overlay-scale 0.35)
+  (frame-overlay-position 'bottom-right)
+  (frame-overlay-image-alpha 255)
+  (frame-overlay-auto-sync t)
+  (frame-overlay-sync-interval 0.05)
+
+  :config
+  (frame-overlay-ensure-module)
+  (frame-overlay-show-file "C:/path/to/test.png"))
+#+end_src
+
+** Playlist example
+Using a directory:
+#+begin_src emacs-lisp
+(use-package frame-overlay
+  :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+       :rev "v0.1.0"
+       :lisp-dir "src/main/emacs")
+  :demand t
+
+  :custom
+  (frame-overlay-scale 0.35)
+  (frame-overlay-position 'bottom-right)
+  (frame-overlay-image-alpha 255)
+  (frame-overlay-auto-sync t)
+  (frame-overlay-sync-interval 0.05)
+
+  (frame-overlay-playlist-interval 5.0)
+  (frame-overlay-playlist-loop t)
+  (frame-overlay-playlist-recursive nil)
+
+  :config
+  (frame-overlay-ensure-module)
+  (frame-overlay-playlist-start-directory "C:/images/"))
+#+end_src
+
+Using full file paths:
+#+begin_src emacs-lisp
+(use-package frame-overlay
+  :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+       :rev "v0.1.0"
+       :lisp-dir "src/main/emacs")
+  :demand t
+
+  :custom
+  (frame-overlay-scale 0.35)
+  (frame-overlay-position 'bottom-right)
+  (frame-overlay-image-alpha 255)
+  (frame-overlay-auto-sync t)
+  (frame-overlay-sync-interval 0.05)
+
+  (frame-overlay-playlist
+   (list "C:/images/a.png"
+         "C:/images/b.png"
+         "C:/images/c.png"))
+
+  (frame-overlay-playlist-interval 5.0)
+  (frame-overlay-playlist-loop t)
+
+  :config
+  (frame-overlay-ensure-module)
+  (frame-overlay-playlist-start))
 #+end_src
 
 ** NOTE
@@ -82,7 +156,6 @@ Using a directory:
 #+end_src
 
 Using full file paths:
-
 #+begin_src emacs-lisp
   (setq frame-overlay-playlist
         (list "C:/images/a.png"

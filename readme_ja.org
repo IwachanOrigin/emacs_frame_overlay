@@ -34,15 +34,90 @@ Emacsのフレーム上に透明なPNG画像を表示します。
 =frame-overlay-ensure-module= が呼び出されると、ネイティブのダイナミックモジュールが
 まだビルドされていない場合、またはネイティブのソースファイルが更新された場合、CMake によって自動的にビルドされます。
 
+** ネイティブモジュールの読み込みまで行う設定
 #+begin_src emacs-lisp
-  (use-package frame-overlay
-    :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-              :rev "v0.1.0"
-              :lisp-dir "src/main/emacs")
-    :demand t
-    :config
-    (frame-overlay-ensure-module))
+(use-package frame-overlay
+  :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+       :rev "v0.1.0"
+       :lisp-dir "src/main/emacs")
+  :demand t
+  :config
+  (frame-overlay-ensure-module))
 #+end_src
+
+** 単一画像設定例
+#+begin_src emacs-lisp
+(use-package frame-overlay
+  :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+       :rev "v0.1.0"
+       :lisp-dir "src/main/emacs")
+  :demand t
+
+  :custom
+  (frame-overlay-scale 0.35)
+  (frame-overlay-position 'bottom-right)
+  (frame-overlay-image-alpha 255)
+  (frame-overlay-auto-sync t)
+  (frame-overlay-sync-interval 0.05)
+
+  :config
+  (frame-overlay-ensure-module)
+  (frame-overlay-show-file "C:/path/to/test.png"))
+#+end_src
+
+** プレイリスト画像設定例
+ディレクトリ内の画像ファイル群:
+#+begin_src emacs-lisp
+(use-package frame-overlay
+  :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+       :rev "v0.1.0"
+       :lisp-dir "src/main/emacs")
+  :demand t
+
+  :custom
+  (frame-overlay-scale 0.35)
+  (frame-overlay-position 'bottom-right)
+  (frame-overlay-image-alpha 255)
+  (frame-overlay-auto-sync t)
+  (frame-overlay-sync-interval 0.05)
+
+  (frame-overlay-playlist-interval 5.0)
+  (frame-overlay-playlist-loop t)
+  (frame-overlay-playlist-recursive nil)
+
+  :config
+  (frame-overlay-ensure-module)
+  (frame-overlay-playlist-start-directory "C:/images/"))
+#+end_src
+
+画像ファイルのフルパスを列挙してプレイリスト再生する設定:
+#+begin_src emacs-lisp
+(use-package frame-overlay
+  :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+       :rev "v0.1.0"
+       :lisp-dir "src/main/emacs")
+  :demand t
+
+  :custom
+  (frame-overlay-scale 0.35)
+  (frame-overlay-position 'bottom-right)
+  (frame-overlay-image-alpha 255)
+  (frame-overlay-auto-sync t)
+  (frame-overlay-sync-interval 0.05)
+
+  (frame-overlay-playlist
+   (list "C:/images/a.png"
+         "C:/images/b.png"
+         "C:/images/c.png"))
+
+  (frame-overlay-playlist-interval 5.0)
+  (frame-overlay-playlist-loop t)
+
+  :config
+  (frame-overlay-ensure-module)
+  (frame-overlay-playlist-start))
+#+end_src
+
 
 ** NOTE
 ビルドに使用するソフトウェアが、Emacs上から見つかることを確認してください。
@@ -68,7 +143,7 @@ Emacsのフレーム上に透明なPNG画像を表示します。
   (setq frame-overlay-verbose nil)
 #+end_src
 
-** 画像設定例
+** 単一画像設定例
 #+begin_src emacs-lisp
   (frame-overlay-show-file "C:/path/to/test.png")
 #+end_src
