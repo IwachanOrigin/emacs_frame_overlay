@@ -2,6 +2,8 @@
 #+author: Yuji Iwanaga
 #+date: <2026-09-25 Fri>
 
+[[file:assets/screenshot.png]]
+
 [[file:readme.org][ENGLISH]]
 
 このパッケージは、Windowsのネイティブオーバーレイによるクリックスルー機能を利用して、
@@ -13,6 +15,9 @@ Emacsのフレーム上に透明なPNG画像を表示します。
 このパッケージは、Windows 11 でのみ動作確認を行っています。
 
 現在、PNG形式の画像ファイルのみサポートしています。
+
+* Demo
+[[file:assets/demo.mp4][Demo video]]
 
 * 要件
 ** プラットフォーム

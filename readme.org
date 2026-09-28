@@ -2,6 +2,8 @@
 #+author: Yuji Iwanaga
 #+date: <2026-09-25 Fri>
 
+[[file:assets/screenshot.png]]
+
 [[file:readme_ja.org][日本語]]
 
 This package displays transparent PNG images over an Emacs frame
@@ -13,6 +15,9 @@ with normal mouse operations in Emacs.
 This package has currently been tested only on Windows 11.
 
 Only PNG image files are currently supported.
+
+* Demo
+[[file:assets/demo.mp4][Demo video]]
 
 * Requirements
 ** Platform
