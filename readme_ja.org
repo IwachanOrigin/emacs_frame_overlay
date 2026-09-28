@@ -17,7 +17,7 @@ Emacsのフレーム上に透明なPNG画像を表示します。
 現在、PNG形式の画像ファイルのみサポートしています。
 
 * Demo
-[[file:assets/demo.mp4][Demo video]]
+https://github.com/user-attachments/assets/c9da1669-1183-4221-a437-742647dd4819
 
 * 要件
 ** プラットフォーム
