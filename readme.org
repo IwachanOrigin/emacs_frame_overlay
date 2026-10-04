@@ -179,6 +179,7 @@ Using full file paths:
 **** Description
 #+begin_example
 Specifies the scale factor used to display PNG images.
+This setting is used when frame-overlay-size-mode is fixed.
 1.0 is the actual size.
 
 1.0  = 100%
@@ -188,6 +189,56 @@ Specifies the scale factor used to display PNG images.
 
 The default value is 1.0.
 #+end_example
+
+*** frame-overlay-size-mode
+**** Usage
+#+begin_src emacs-lisp
+  (setq frame-overlay-size-mode 'fixed)
+#+end_src
+
+**** Description
+#+begin_example
+Specifies how the display size of the PNG image is determined.
+
+Available values:
+
+fixed
+  Displays the image at a fixed scale using frame-overlay-scale.
+
+fit
+  Automatically resizes the image according to the size of the
+  Emacs Frame client area.
+  The aspect ratio of the image is preserved.
+
+When fit is used, the Overlay image and Overlay Window are
+automatically resized when the Frame size changes.
+
+The default value is fixed.
+#+end_example
+
+*** frame-overlay-frame-ratio
+**** Usage
+#+begin_src emacs-lisp
+  (setq frame-overlay-frame-ratio 0.35)
+#+end_src
+
+**** Description
+#+begin_example
+Specifies the maximum fraction of the Emacs Frame that may be used
+by the image when frame-overlay-size-mode is fit.
+
+The value must be greater than 0 and no greater than 1.0.
+
+For example, when 0.35 is specified, the image is resized so that
+it fits within 35% of both the width and height of the Frame client
+area while preserving its aspect ratio.
+
+When the Frame size changes, the display size is recalculated using
+this ratio.
+
+This setting is used only when frame-overlay-size-mode is fit.
+#+end_example
+
 
 *** frame-overlay-position
 **** Usage
@@ -377,6 +428,8 @@ you can click on the image to interact with the Emacs interface behind it.
 Reloads and redisplays the currently displayed PNG image using the current settings.
 
 frame-overlay-scale
+frame-overlay-size-mode
+frame-overlay-frame-ratio
 frame-overlay-position
 frame-overlay-margin-x
 frame-overlay-margin-y
