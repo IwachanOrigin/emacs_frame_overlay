@@ -44,7 +44,7 @@ the native source files have been updated.
 #+begin_src emacs-lisp
 (use-package frame-overlay
   :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
+       :rev "v0.2.0"
        :lisp-dir "src/main/emacs")
   :demand t
   :config
@@ -55,7 +55,7 @@ the native source files have been updated.
 #+begin_src emacs-lisp
 (use-package frame-overlay
   :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
+       :rev "v0.2.0"
        :lisp-dir "src/main/emacs")
   :demand t
 
@@ -76,7 +76,7 @@ Using a directory:
 #+begin_src emacs-lisp
 (use-package frame-overlay
   :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
+       :rev "v0.2.0"
        :lisp-dir "src/main/emacs")
   :demand t
 
@@ -100,7 +100,7 @@ Using full file paths:
 #+begin_src emacs-lisp
 (use-package frame-overlay
   :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
+       :rev "v0.2.0"
        :lisp-dir "src/main/emacs")
   :demand t
 
