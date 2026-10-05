@@ -43,7 +43,7 @@ https://github.com/user-attachments/assets/c9da1669-1183-4221-a437-742647dd4819
 #+begin_src emacs-lisp
 (use-package frame-overlay
   :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
+       :rev "v0.2.0"
        :lisp-dir "src/main/emacs")
   :demand t
   :config
@@ -51,23 +51,46 @@ https://github.com/user-attachments/assets/c9da1669-1183-4221-a437-742647dd4819
 #+end_src
 
 ** 単一画像設定例
+固定倍率で表示する場合:
 #+begin_src emacs-lisp
-(use-package frame-overlay
-  :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
-       :lisp-dir "src/main/emacs")
-  :demand t
+  (use-package frame-overlay
+    :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+         :rev "v0.2.0"
+         :lisp-dir "src/main/emacs")
+    :demand t
 
-  :custom
-  (frame-overlay-scale 0.35)
-  (frame-overlay-position 'bottom-right)
-  (frame-overlay-image-alpha 255)
-  (frame-overlay-auto-sync t)
-  (frame-overlay-sync-interval 0.05)
+    :custom
+    (frame-overlay-size-mode 'fixed)
+    (frame-overlay-scale 0.35)
+    (frame-overlay-position 'bottom-right)
+    (frame-overlay-image-alpha 255)
+    (frame-overlay-auto-sync t)
+    (frame-overlay-sync-interval 0.05)
 
-  :config
-  (frame-overlay-ensure-module)
-  (frame-overlay-show-file "C:/path/to/test.png"))
+    :config
+    (frame-overlay-ensure-module)
+    (frame-overlay-show-file "C:/path/to/test.png"))
+#+end_src
+
+Emacs Frameのサイズに合わせて自動リサイズする場合:
+#+begin_src emacs-lisp
+  (use-package frame-overlay
+    :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+         :rev "v0.2.0"
+         :lisp-dir "src/main/emacs")
+    :demand t
+
+    :custom
+    (frame-overlay-size-mode 'fit)
+    (frame-overlay-frame-ratio 0.90)
+    (frame-overlay-position 'bottom-right)
+    (frame-overlay-image-alpha 255)
+    (frame-overlay-auto-sync t)
+    (frame-overlay-sync-interval 0.05)
+
+    :config
+    (frame-overlay-ensure-module)
+    (frame-overlay-show-file "C:/path/to/test.png"))
 #+end_src
 
 ** プレイリスト画像設定例
@@ -75,7 +98,7 @@ https://github.com/user-attachments/assets/c9da1669-1183-4221-a437-742647dd4819
 #+begin_src emacs-lisp
 (use-package frame-overlay
   :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
+       :rev "v0.2.0"
        :lisp-dir "src/main/emacs")
   :demand t
 
@@ -99,7 +122,7 @@ https://github.com/user-attachments/assets/c9da1669-1183-4221-a437-742647dd4819
 #+begin_src emacs-lisp
 (use-package frame-overlay
   :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
+       :rev "v0.2.0"
        :lisp-dir "src/main/emacs")
   :demand t
 
@@ -123,6 +146,9 @@ https://github.com/user-attachments/assets/c9da1669-1183-4221-a437-742647dd4819
   (frame-overlay-playlist-start))
 #+end_src
 
+画像をEmacs Frameのサイズに合わせて自動リサイズする場合は、
+=frame-overlay-size-mode= に =fit= を指定し、
+=frame-overlay-frame-ratio= でFrameに対する最大表示割合を設定できます。
 
 ** NOTE
 ビルドに使用するソフトウェアが、Emacs上から見つかることを確認してください。
@@ -180,6 +206,7 @@ https://github.com/user-attachments/assets/c9da1669-1183-4221-a437-742647dd4819
 **** Description
 #+begin_example
 PNG画像の表示倍率を指定します。
+この設定は frame-overlay-size-mode が fixed の場合に使用されます。
 1.0 が原寸です。
 
 1.0  = 100%
@@ -188,6 +215,53 @@ PNG画像の表示倍率を指定します。
 0.25 = 25%
 
 デフォルト値は1.0です。
+#+end_example
+
+*** frame-overlay-size-mode
+**** Usage
+#+begin_src emacs-lisp
+  (setq frame-overlay-size-mode 'fixed)
+#+end_src
+
+**** Description
+#+begin_example
+PNG画像の表示サイズを決定する方法を指定します。
+指定可能な値:
+
+fixed
+  frame-overlay-scale を使用して固定倍率で表示します。
+
+fit
+  Emacs Frameのclient areaのサイズに合わせて画像を自動的に拡大・縮小します。
+  画像のアスペクト比は維持されます。
+
+fit の場合、Frameのサイズが変更されると、Overlay画像とOverlay Windowのサイズも自動的に追従します。
+また、fit では、画像を元のサイズより大きく拡大しません。
+
+デフォルト値は fixed です。
+#+end_example
+
+*** frame-overlay-frame-ratio
+**** Usage
+#+begin_src emacs-lisp
+  (setq frame-overlay-frame-ratio 0.35)
+#+end_src
+
+**** Description
+#+begin_example
+frame-overlay-size-mode が fit の場合に、
+画像がEmacs Frame内で使用できる最大サイズの割合を指定します。
+
+指定可能な範囲は0より大きく1.0以下です。
+
+例えば0.35を指定した場合、
+画像はFrameのclient areaの幅・高さそれぞれ35%以内に収まるように
+アスペクト比を維持してリサイズされます。
+
+Frameのサイズが変更された場合も、この割合を基準に表示サイズが再計算されます。
+この設定は frame-overlay-size-mode が fit の場合のみ使用されます。
+
+デフォルト値は 0.35 です。
 #+end_example
 
 *** frame-overlay-position
@@ -348,7 +422,9 @@ WICでdecode
   ↓
 32bit PBGRAへ変換
   ↓
-指定倍率でリサイズ
+frame-overlay-size-mode にしたがって表示サイズを決定
+  ↓
+画像をリサイズ
   ↓
 UpdateLayeredWindow
   ↓
@@ -369,6 +445,8 @@ PNGが持っている透明部分はそのまま透過されます。
 現在表示中のPNG画像を、現在の設定値で再読み込み・再表示します。
 
 frame-overlay-scale
+frame-overlay-size-mode
+frame-overlay-frame-ratio
 frame-overlay-position
 frame-overlay-margin-x
 frame-overlay-margin-y

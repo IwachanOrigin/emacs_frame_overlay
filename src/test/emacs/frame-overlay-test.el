@@ -31,6 +31,22 @@
     (should-error
      (frame-overlay--position-code))))
 
+
+;;; Size mode
+
+(ert-deftest frame-overlay-test-size-mode-code-fixed ()
+  (let ((frame-overlay-size-mode 'fixed))
+    (should (= (frame-overlay--size-mode-code) 0))))
+
+(ert-deftest frame-overlay-test-size-mode-code-fit ()
+  (let ((frame-overlay-size-mode 'fit))
+    (should (= (frame-overlay--size-mode-code) 1))))
+
+(ert-deftest frame-overlay-test-size-mode-code-invalid ()
+  (let ((frame-overlay-size-mode 'invalid-size-mode))
+    (should-error
+     (frame-overlay--size-mode-code))))
+
 ;;; Image option validation
 
 (ert-deftest frame-overlay-test-image-options-valid ()
@@ -93,6 +109,152 @@
     (should-error
      (frame-overlay--validate-image-options)
      :type 'user-error)))
+
+
+(ert-deftest frame-overlay-test-image-options-invalid-size-mode ()
+  (let ((frame-overlay-size-mode 'invalid-size-mode)
+        (frame-overlay-scale 1.0)
+        (frame-overlay-frame-ratio 0.35)
+        (frame-overlay-image-alpha 255)
+        (frame-overlay-margin-x 24)
+        (frame-overlay-margin-y 24))
+    (should-error
+     (frame-overlay--validate-image-options)
+     :type 'user-error)))
+
+(ert-deftest frame-overlay-test-image-options-fit-valid ()
+  (let ((frame-overlay-size-mode 'fit)
+        (frame-overlay-scale 1.0)
+        (frame-overlay-frame-ratio 0.35)
+        (frame-overlay-image-alpha 255)
+        (frame-overlay-margin-x 24)
+        (frame-overlay-margin-y 24))
+    (frame-overlay--validate-image-options)))
+
+(ert-deftest frame-overlay-test-image-options-fit-invalid-ratio-zero ()
+  (let ((frame-overlay-size-mode 'fit)
+        (frame-overlay-scale 1.0)
+        (frame-overlay-frame-ratio 0)
+        (frame-overlay-image-alpha 255)
+        (frame-overlay-margin-x 24)
+        (frame-overlay-margin-y 24))
+    (should-error
+     (frame-overlay--validate-image-options)
+     :type 'user-error)))
+
+(ert-deftest frame-overlay-test-image-options-fit-invalid-ratio-minus ()
+  (let ((frame-overlay-size-mode 'fit)
+        (frame-overlay-scale 1.0)
+        (frame-overlay-frame-ratio -0.1)
+        (frame-overlay-image-alpha 255)
+        (frame-overlay-margin-x 24)
+        (frame-overlay-margin-y 24))
+    (should-error
+     (frame-overlay--validate-image-options)
+     :type 'user-error)))
+
+(ert-deftest frame-overlay-test-image-options-fit-invalid-ratio-high ()
+  (let ((frame-overlay-size-mode 'fit)
+        (frame-overlay-scale 1.0)
+        (frame-overlay-frame-ratio 1.1)
+        (frame-overlay-image-alpha 255)
+        (frame-overlay-margin-x 24)
+        (frame-overlay-margin-y 24))
+    (should-error
+     (frame-overlay--validate-image-options)
+     :type 'user-error)))
+
+(ert-deftest frame-overlay-test-image-options-fit-invalid-ratio-not-number ()
+  (let ((frame-overlay-size-mode 'fit)
+        (frame-overlay-scale 1.0)
+        (frame-overlay-frame-ratio 'invalid)
+        (frame-overlay-image-alpha 255)
+        (frame-overlay-margin-x 24)
+        (frame-overlay-margin-y 24))
+    (should-error
+     (frame-overlay--validate-image-options)
+     :type 'user-error)))
+
+(ert-deftest frame-overlay-test-image-options-fit-does-not-require-positive-scale ()
+  (let ((frame-overlay-size-mode 'fit)
+        (frame-overlay-scale 0)
+        (frame-overlay-frame-ratio 0.35)
+        (frame-overlay-image-alpha 255)
+        (frame-overlay-margin-x 24)
+        (frame-overlay-margin-y 24))
+    (frame-overlay--validate-image-options)))
+
+;;; Native image argument forwarding
+
+(ert-deftest frame-overlay-test-show-file-fixed-native-arguments ()
+  (let ((file (make-temp-file "frame-overlay-test-" nil ".png"))
+        (frame-overlay-size-mode 'fixed)
+        (frame-overlay-scale 0.5)
+        (frame-overlay-frame-ratio 0.35)
+        (frame-overlay-position 'bottom-right)
+        (frame-overlay-margin-x 12)
+        (frame-overlay-margin-y 34)
+        (frame-overlay-image-alpha 200)
+        (captured-args nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'window-system)
+                   (lambda (&optional _frame) 'w32))
+                  ((symbol-function 'frame-overlay--native-id)
+                   (lambda (_frame _parameter) 1234))
+                  ((symbol-function 'frame-overlay-module-show-file)
+                   (lambda (&rest args)
+                     (setq captured-args args)
+                     t))
+                  ((symbol-function 'frame-overlay--start-timer)
+                   (lambda () nil)))
+          (should (frame-overlay--show-file file))
+          (should
+           (equal captured-args
+                  (list 1234
+                        (expand-file-name file)
+                        0.5
+                        3
+                        12
+                        34
+                        200
+                        0
+                        0.35))))
+      (delete-file file))))
+
+(ert-deftest frame-overlay-test-show-file-fit-native-arguments ()
+  (let ((file (make-temp-file "frame-overlay-test-" nil ".png"))
+        (frame-overlay-size-mode 'fit)
+        (frame-overlay-scale 1.0)
+        (frame-overlay-frame-ratio 0.4)
+        (frame-overlay-position 'center)
+        (frame-overlay-margin-x 20)
+        (frame-overlay-margin-y 30)
+        (frame-overlay-image-alpha 180)
+        (captured-args nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'window-system)
+                   (lambda (&optional _frame) 'w32))
+                  ((symbol-function 'frame-overlay--native-id)
+                   (lambda (_frame _parameter) 5678))
+                  ((symbol-function 'frame-overlay-module-show-file)
+                   (lambda (&rest args)
+                     (setq captured-args args)
+                     t))
+                  ((symbol-function 'frame-overlay--start-timer)
+                   (lambda () nil)))
+          (should (frame-overlay--show-file file))
+          (should
+           (equal captured-args
+                  (list 5678
+                        (expand-file-name file)
+                        1.0
+                        4
+                        20
+                        30
+                        180
+                        1
+                        0.4))))
+      (delete-file file))))
 
 ;;; Playlist validation
 

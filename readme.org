@@ -44,7 +44,7 @@ the native source files have been updated.
 #+begin_src emacs-lisp
 (use-package frame-overlay
   :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
+       :rev "v0.2.0"
        :lisp-dir "src/main/emacs")
   :demand t
   :config
@@ -52,23 +52,46 @@ the native source files have been updated.
 #+end_src
 
 ** Single image example
+Using a fixed scale:
 #+begin_src emacs-lisp
-(use-package frame-overlay
-  :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
-       :lisp-dir "src/main/emacs")
-  :demand t
+  (use-package frame-overlay
+    :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+         :rev "v0.2.0"
+         :lisp-dir "src/main/emacs")
+    :demand t
 
-  :custom
-  (frame-overlay-scale 0.35)
-  (frame-overlay-position 'bottom-right)
-  (frame-overlay-image-alpha 255)
-  (frame-overlay-auto-sync t)
-  (frame-overlay-sync-interval 0.05)
+    :custom
+    (frame-overlay-size-mode 'fixed)
+    (frame-overlay-scale 0.35)
+    (frame-overlay-position 'bottom-right)
+    (frame-overlay-image-alpha 255)
+    (frame-overlay-auto-sync t)
+    (frame-overlay-sync-interval 0.05)
 
-  :config
-  (frame-overlay-ensure-module)
-  (frame-overlay-show-file "C:/path/to/test.png"))
+    :config
+    (frame-overlay-ensure-module)
+    (frame-overlay-show-file "C:/path/to/test.png"))
+#+end_src
+
+Using automatic resizing based on the Emacs Frame size:
+#+begin_src emacs-lisp
+  (use-package frame-overlay
+    :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
+         :rev "v0.2.0"
+         :lisp-dir "src/main/emacs")
+    :demand t
+
+    :custom
+    (frame-overlay-size-mode 'fit)
+    (frame-overlay-frame-ratio 0.90)
+    (frame-overlay-position 'bottom-right)
+    (frame-overlay-image-alpha 255)
+    (frame-overlay-auto-sync t)
+    (frame-overlay-sync-interval 0.05)
+
+    :config
+    (frame-overlay-ensure-module)
+    (frame-overlay-show-file "C:/path/to/test.png"))
 #+end_src
 
 ** Playlist example
@@ -76,7 +99,7 @@ Using a directory:
 #+begin_src emacs-lisp
 (use-package frame-overlay
   :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
+       :rev "v0.2.0"
        :lisp-dir "src/main/emacs")
   :demand t
 
@@ -100,7 +123,7 @@ Using full file paths:
 #+begin_src emacs-lisp
 (use-package frame-overlay
   :vc (:url "https://github.com/IwachanOrigin/emacs_frame_overlay.git"
-       :rev "v0.1.0"
+       :rev "v0.2.0"
        :lisp-dir "src/main/emacs")
   :demand t
 
@@ -124,6 +147,10 @@ Using full file paths:
   (frame-overlay-playlist-start))
 #+end_src
 
+To automatically resize playlist images according to the Emacs Frame size,
+set =frame-overlay-size-mode= to =fit= and use =frame-overlay-frame-ratio=
+to specify the maximum display size relative to the Frame.
+
 ** NOTE
 Make sure the required build tools are available in Emacs's PATH.
 
@@ -136,7 +163,8 @@ Make sure the required build tools are available in Emacs's PATH.
 * Configuration
 ** Basic configuration example
 #+begin_src emacs-lisp
-  (setq frame-overlay-scale 0.35)
+  (setq frame-overlay-size-mode 'fit)
+  (setq frame-overlay-frame-ratio 0.90)
   (setq frame-overlay-position 'bottom-right)
   (setq frame-overlay-image-alpha 255)
   (setq frame-overlay-auto-sync t)
@@ -179,6 +207,7 @@ Using full file paths:
 **** Description
 #+begin_example
 Specifies the scale factor used to display PNG images.
+This setting is used when frame-overlay-size-mode is fixed.
 1.0 is the actual size.
 
 1.0  = 100%
@@ -188,6 +217,58 @@ Specifies the scale factor used to display PNG images.
 
 The default value is 1.0.
 #+end_example
+
+*** frame-overlay-size-mode
+**** Usage
+#+begin_src emacs-lisp
+  (setq frame-overlay-size-mode 'fixed)
+#+end_src
+
+**** Description
+#+begin_example
+Specifies how the display size of the PNG image is determined.
+
+Available values:
+
+fixed
+  Displays the image at a fixed scale using frame-overlay-scale.
+
+fit
+  Automatically resizes the image according to the size of the
+  Emacs Frame client area.
+  The aspect ratio of the image is preserved.
+
+When fit is used, the Overlay image and Overlay Window are
+automatically resized when the Frame size changes.
+In fit mode, images are never scaled up beyond their original dimensions.
+
+The default value is fixed.
+#+end_example
+
+*** frame-overlay-frame-ratio
+**** Usage
+#+begin_src emacs-lisp
+  (setq frame-overlay-frame-ratio 0.35)
+#+end_src
+
+**** Description
+#+begin_example
+Specifies the maximum fraction of the Emacs Frame that may be used
+by the image when frame-overlay-size-mode is fit.
+
+The value must be greater than 0 and no greater than 1.0.
+
+For example, when 0.35 is specified, the image is resized so that
+it fits within 35% of both the width and height of the Frame client
+area while preserving its aspect ratio.
+
+When the Frame size changes, the display size is recalculated using this ratio.
+
+This setting is used only when frame-overlay-size-mode is fit.
+
+The default value is `0.35`.
+#+end_example
+
 
 *** frame-overlay-position
 **** Usage
@@ -355,7 +436,9 @@ Decode with WIC
   ↓
 Convert to 32-bit PBGRA
   ↓
-Resize at the specified scale
+Determine the display size according to frame-overlay-size-mode
+  ↓
+Resize the image
   ↓
 UpdateLayeredWindow
   ↓
@@ -377,6 +460,8 @@ you can click on the image to interact with the Emacs interface behind it.
 Reloads and redisplays the currently displayed PNG image using the current settings.
 
 frame-overlay-scale
+frame-overlay-size-mode
+frame-overlay-frame-ratio
 frame-overlay-position
 frame-overlay-margin-x
 frame-overlay-margin-y

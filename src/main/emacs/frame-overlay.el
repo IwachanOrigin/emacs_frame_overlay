@@ -4,7 +4,7 @@
 
 ;; Author: Yuji Iwanaga
 ;; Maintainer: Yuji Iwanaga
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: convenience, frames, multimedia
 ;; URL: https://github.com/IwachanOrigin/emacs_frame_overlay
@@ -50,7 +50,8 @@
 
 (declare-function frame-overlay-module-show-file
                   "frame-overlay-module"
-                  (hwnd file &optional scale position margin-x margin-y alpha))
+                  (hwnd file &optional scale position margin-x margin-y alpha
+                        size-mode frame-ratio))
 
 (declare-function frame-overlay-module-sync
                   "frame-overlay-module"
@@ -138,6 +139,21 @@ The PNG's own per-pixel alpha is preserved and multiplied by this value."
 (defcustom frame-overlay-scale 1.0
   "Scale factor applied when a PNG is loaded.
 For example, 0.5 displays the image at half size and 2.0 at double size."
+  :type 'number)
+
+(defcustom frame-overlay-size-mode 'fixed
+  "How the PNG overlay size is determined.
+
+`fixed' uses `frame-overlay-scale'.
+`fit' resizes the image when the Emacs frame client size changes while
+preserving the image aspect ratio."
+  :type '(choice
+          (const :tag "Fixed scale" fixed)
+          (const :tag "Fit to frame" fit)))
+
+(defcustom frame-overlay-frame-ratio 0.35
+  "Maximum fraction of the Emacs frame used by the image in `fit' mode.
+The value must be greater than 0 and no greater than 1.0."
   :type 'number)
 
 (defcustom frame-overlay-position 'bottom-right
@@ -446,11 +462,29 @@ When nil, playlist playback stops after the last image."
     (_ (error "Unsupported frame-overlay-position: %S"
               frame-overlay-position))))
 
+(defun frame-overlay--size-mode-code ()
+  "Return the native size mode code for `frame-overlay-size-mode'."
+  (pcase frame-overlay-size-mode
+    ('fixed 0)
+    ('fit 1)
+    (_ (error "Unsupported frame-overlay-size-mode: %S"
+              frame-overlay-size-mode))))
+
 (defun frame-overlay--validate-image-options ()
   "Validate image-related customization variables."
-  (unless (and (numberp frame-overlay-scale)
-               (> frame-overlay-scale 0))
-    (user-error "frame-overlay-scale must be greater than zero"))
+  (unless (memq frame-overlay-size-mode '(fixed fit))
+    (user-error "frame-overlay-size-mode must be either fixed or fit"))
+
+  (when (eq frame-overlay-size-mode 'fixed)
+    (unless (and (numberp frame-overlay-scale)
+                 (> frame-overlay-scale 0))
+      (user-error "frame-overlay-scale must be greater than zero")))
+
+  (when (eq frame-overlay-size-mode 'fit)
+    (unless (and (numberp frame-overlay-frame-ratio)
+                 (> frame-overlay-frame-ratio 0)
+                 (<= frame-overlay-frame-ratio 1.0))
+      (user-error "frame-overlay-frame-ratio must be greater than 0 and no greater than 1.0")))
 
   (unless (and (integerp frame-overlay-image-alpha)
                (<= 0 frame-overlay-image-alpha 255))
@@ -561,15 +595,18 @@ Unlike `frame-overlay-show-file', this function does not stop playlist playback.
                (frame-overlay--position-code)
                frame-overlay-margin-x
                frame-overlay-margin-y
-               frame-overlay-image-alpha)
+               frame-overlay-image-alpha
+               (frame-overlay--size-mode-code)
+               (float frame-overlay-frame-ratio))
         (error "Failed to show PNG overlay: %s" file))
 
       (setq frame-overlay--file file
             frame-overlay--frame frame)
       (frame-overlay--start-timer)
       (frame-overlay--log
-       "PNG overlay shown: %s (scale %.3g, %s)"
-       file frame-overlay-scale frame-overlay-position)
+       "PNG overlay shown: %s (size-mode %s, scale %.3g, frame-ratio %.3g, %s)"
+       file frame-overlay-size-mode frame-overlay-scale
+       frame-overlay-frame-ratio frame-overlay-position)
 
       t)))
 

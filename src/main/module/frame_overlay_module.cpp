@@ -8,9 +8,11 @@
 #include <wincodec.h>
 #include <stdint.h>
 #include <limits.h>
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <utility>
+#include <vector>
 
 extern "C" {
 #include <emacs-module.h>
@@ -30,6 +32,30 @@ static BYTE g_alpha = 160;
 
 static HBITMAP g_bitmap = NULL;
 static SIZE g_bitmap_size = {0, 0};
+static SIZE g_last_client_size = {0, 0};
+
+struct PngSource
+{
+  std::vector<BYTE> pixels;
+  UINT width = 0;
+  UINT height = 0;
+  UINT stride = 0;
+
+  bool valid() const
+  {
+    return !pixels.empty() && width > 0 && height > 0 && stride > 0;
+  }
+
+  void clear()
+  {
+    pixels.clear();
+    width = 0;
+    height = 0;
+    stride = 0;
+  }
+};
+
+static PngSource g_png_source;
 
 static const wchar_t *kClassName = L"EmacsFrameOverlayPrototypeV2";
 
@@ -49,8 +75,17 @@ enum class OverlayMode
   Png,
 };
 
+enum class OverlaySizeMode : int
+{
+  Fixed = 0,
+  Fit = 1,
+};
+
 static OverlayPosition g_position = OverlayPosition::BottomRight;
 static OverlayMode g_overlay_mode = OverlayMode::None;
+static OverlaySizeMode g_size_mode = OverlaySizeMode::Fixed;
+static double g_scale = 1.0;
+static double g_frame_ratio = 0.35;
 
 template <typename T>
 class ComPtr
@@ -109,6 +144,13 @@ static void deleteBitmap()
 
   g_bitmap_size.cx = 0;
   g_bitmap_size.cy = 0;
+}
+
+static void clearPngSource()
+{
+  g_png_source.clear();
+  g_last_client_size.cx = 0;
+  g_last_client_size.cy = 0;
 }
 
 static LRESULT CALLBACK overlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -295,34 +337,18 @@ static bool calculateOverlayPosition(
   return true;
 }
 
-static bool loadPngToBitmap(const wchar_t* path, double scale)
+static bool initializeWicFactory(
+  ComPtr<IWICImagingFactory>& factory,
+  bool& need_co_uninitialize)
 {
-  if (!path || scale <= 0.0 || !std::isfinite(scale))
+  const HRESULT init_hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+  if (FAILED(init_hr) && init_hr != RPC_E_CHANGED_MODE)
     return false;
 
-  HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  need_co_uninitialize = SUCCEEDED(init_hr);
 
-  // If COM was initialized with a different apartment model, WIC can still
-  // be used; do not balance that initialization with CoUninitialize here.
-  if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
-    return false;
-
-  const bool need_co_uninitialize = SUCCEEDED(hr);
-
-  struct CoGuard
-  {
-    bool enabled;
-
-    ~CoGuard()
-    {
-      if (enabled)
-        CoUninitialize();
-    }
-  } co_guard { need_co_uninitialize };
-
-  ComPtr<IWICImagingFactory> factory;
-
-  hr = CoCreateInstance(
+  const HRESULT hr = CoCreateInstance(
     CLSID_WICImagingFactory,
     nullptr,
     CLSCTX_INPROC_SERVER,
@@ -330,11 +356,45 @@ static bool loadPngToBitmap(const wchar_t* path, double scale)
     reinterpret_cast<void**>(factory.put()));
 
   if (FAILED(hr))
+  {
+    if (need_co_uninitialize)
+    {
+      CoUninitialize();
+      need_co_uninitialize = false;
+    }
+    return false;
+  }
+
+  return true;
+}
+
+struct CoUninitializeGuard
+{
+  bool enabled = false;
+
+  ~CoUninitializeGuard()
+  {
+    if (enabled)
+      CoUninitialize();
+  }
+};
+
+static bool decodePngSource(const wchar_t* path, PngSource& output)
+{
+  if (!path || !*path)
     return false;
 
-  ComPtr<IWICBitmapDecoder> decoder;
+  bool need_co_uninitialize = false;
+  CoUninitializeGuard co_guard;
+  ComPtr<IWICImagingFactory> factory;
 
-  hr = factory->CreateDecoderFromFilename(
+  if (!initializeWicFactory(factory, need_co_uninitialize))
+    return false;
+
+  co_guard.enabled = need_co_uninitialize;
+
+  ComPtr<IWICBitmapDecoder> decoder;
+  HRESULT hr = factory->CreateDecoderFromFilename(
     path,
     nullptr,
     GENERIC_READ,
@@ -345,88 +405,17 @@ static bool loadPngToBitmap(const wchar_t* path, double scale)
     return false;
 
   ComPtr<IWICBitmapFrameDecode> frame;
-
   hr = decoder->GetFrame(0, frame.put());
-
-  if (FAILED(hr))
-    return false;
-
-  UINT source_width = 0;
-  UINT source_height = 0;
-
-  hr = frame->GetSize(&source_width, &source_height);
-
-  if (FAILED(hr) || source_width == 0 || source_height == 0)
-    return false;
-
-  const double scaled_width_value =
-    std::round(static_cast<double>(source_width) * scale);
-  const double scaled_height_value =
-    std::round(static_cast<double>(source_height) * scale);
-
-  if (!std::isfinite(scaled_width_value) ||
-      !std::isfinite(scaled_height_value) ||
-      scaled_width_value < 1.0 ||
-      scaled_height_value < 1.0 ||
-      scaled_width_value > static_cast<double>(UINT_MAX) ||
-      scaled_height_value > static_cast<double>(UINT_MAX))
-    return false;
-
-  const UINT scaled_width = static_cast<UINT>(scaled_width_value);
-  const UINT scaled_height = static_cast<UINT>(scaled_height_value);
-
-  ComPtr<IWICBitmapScaler> scaler;
-  IWICBitmapSource *source = frame.get();
-
-  if (scaled_width != source_width || scaled_height != source_height) {
-    hr = factory->CreateBitmapScaler(scaler.put());
-
-    if (FAILED(hr))
-      return false;
-
-    hr = scaler->Initialize(
-      frame.get(),
-      scaled_width,
-      scaled_height,
-      WICBitmapInterpolationModeFant);
-
-    if (FAILED(hr))
-      return false;
-
-    source = scaler.get();
-  }
-
-  ComPtr<IWICFormatConverter> converter;
-
-  hr = factory->CreateFormatConverter(converter.put());
-
-  if (FAILED(hr))
-    return false;
-
-  hr = converter->Initialize(
-    source,
-    GUID_WICPixelFormat32bppPBGRA,
-    WICBitmapDitherTypeNone,
-    nullptr,
-    0.0,
-    WICBitmapPaletteTypeCustom);
 
   if (FAILED(hr))
     return false;
 
   UINT width = 0;
   UINT height = 0;
-
-  hr = converter->GetSize(&width, &height);
+  hr = frame->GetSize(&width, &height);
 
   if (FAILED(hr) || width == 0 || height == 0)
     return false;
-
-  if (width > static_cast<UINT>(LONG_MAX) ||
-      height > static_cast<UINT>(LONG_MAX))
-  {
-    return false;
-  }
 
   if (width > UINT_MAX / 4)
     return false;
@@ -438,17 +427,238 @@ static bool loadPngToBitmap(const wchar_t* path, double scale)
 
   const UINT buffer_size = stride * height;
 
+  ComPtr<IWICFormatConverter> converter;
+  hr = factory->CreateFormatConverter(converter.put());
+
+  if (FAILED(hr))
+    return false;
+
+  hr = converter->Initialize(
+    frame.get(),
+    GUID_WICPixelFormat32bppPBGRA,
+    WICBitmapDitherTypeNone,
+    nullptr,
+    0.0,
+    WICBitmapPaletteTypeCustom);
+
+  if (FAILED(hr))
+    return false;
+
+  PngSource decoded;
+  decoded.width = width;
+  decoded.height = height;
+  decoded.stride = stride;
+
+  try
+  {
+    decoded.pixels.resize(buffer_size);
+  }
+  catch (...)
+  {
+    return false;
+  }
+
+  hr = converter->CopyPixels(
+    nullptr,
+    stride,
+    buffer_size,
+    decoded.pixels.data());
+
+  if (FAILED(hr))
+    return false;
+
+  output = std::move(decoded);
+  return true;
+}
+
+static bool getAnchorClientSize(SIZE& size)
+{
+  if (!g_anchor || !IsWindow(g_anchor))
+    return false;
+
+  RECT rc {};
+  if (!GetClientRect(g_anchor, &rc))
+    return false;
+
+  const LONG width = rc.right - rc.left;
+  const LONG height = rc.bottom - rc.top;
+
+  if (width <= 0 || height <= 0)
+    return false;
+
+  size.cx = width;
+  size.cy = height;
+  return true;
+}
+
+static bool calculateFixedBitmapSize(
+  const PngSource& source,
+  double scale,
+  SIZE& size)
+{
+  if (!source.valid() || scale <= 0.0 || !std::isfinite(scale))
+    return false;
+
+  const double width_value =
+    std::round(static_cast<double>(source.width) * scale);
+  const double height_value =
+    std::round(static_cast<double>(source.height) * scale);
+
+  if (!std::isfinite(width_value) ||
+      !std::isfinite(height_value) ||
+      width_value < 1.0 ||
+      height_value < 1.0 ||
+      width_value > static_cast<double>(LONG_MAX) ||
+      height_value > static_cast<double>(LONG_MAX))
+  {
+    return false;
+  }
+
+  size.cx = static_cast<LONG>(width_value);
+  size.cy = static_cast<LONG>(height_value);
+  return true;
+}
+
+static bool calculateFitBitmapSize(
+  const PngSource& source,
+  const SIZE& client_size,
+  double frame_ratio,
+  SIZE& size)
+{
+  if (!source.valid() ||
+      client_size.cx <= 0 ||
+      client_size.cy <= 0 ||
+      frame_ratio <= 0.0 ||
+      frame_ratio > 1.0 ||
+      !std::isfinite(frame_ratio))
+  {
+    return false;
+  }
+
+  const double max_width =
+    static_cast<double>(client_size.cx) * frame_ratio;
+  const double max_height =
+    static_cast<double>(client_size.cy) * frame_ratio;
+
+  const double width_scale =
+    max_width / static_cast<double>(source.width);
+  const double height_scale =
+    max_height / static_cast<double>(source.height);
+  const double scale = std::min({1.0, width_scale, height_scale});
+
+  return calculateFixedBitmapSize(source, scale, size);
+}
+
+static bool createBitmapFromSource(
+  const PngSource& source,
+  const SIZE& target_size,
+  HBITMAP& output_bitmap)
+{
+  output_bitmap = NULL;
+
+  if (!source.valid() || target_size.cx <= 0 || target_size.cy <= 0)
+    return false;
+
+  const UINT target_width = static_cast<UINT>(target_size.cx);
+  const UINT target_height = static_cast<UINT>(target_size.cy);
+
+  if (target_width > UINT_MAX / 4)
+    return false;
+
+  const UINT target_stride = target_width * 4;
+
+  if (target_height > UINT_MAX / target_stride)
+    return false;
+
+  const UINT target_buffer_size = target_stride * target_height;
+
+  bool need_co_uninitialize = false;
+  CoUninitializeGuard co_guard;
+  ComPtr<IWICImagingFactory> factory;
+
+  if (!initializeWicFactory(factory, need_co_uninitialize))
+    return false;
+
+  co_guard.enabled = need_co_uninitialize;
+
+  if (source.pixels.size() > static_cast<size_t>(UINT_MAX))
+    return false;
+
+  ComPtr<IWICBitmap> source_bitmap;
+  HRESULT hr = factory->CreateBitmapFromMemory(
+    source.width,
+    source.height,
+    GUID_WICPixelFormat32bppPBGRA,
+    source.stride,
+    static_cast<UINT>(source.pixels.size()),
+    const_cast<BYTE*>(source.pixels.data()),
+    source_bitmap.put());
+
+  if (FAILED(hr))
+    return false;
+
+  IWICBitmapSource* bitmap_source = source_bitmap.get();
+  ComPtr<IWICBitmapScaler> scaler;
+
+  if (target_width != source.width || target_height != source.height)
+  {
+    hr = factory->CreateBitmapScaler(scaler.put());
+
+    if (FAILED(hr))
+      return false;
+
+    hr = scaler->Initialize(
+      source_bitmap.get(),
+      target_width,
+      target_height,
+      WICBitmapInterpolationModeFant);
+
+    if (FAILED(hr))
+      return false;
+
+    bitmap_source = scaler.get();
+  }
+
+  IWICBitmapSource* copy_source = bitmap_source;
+  WICPixelFormatGUID pixel_format {};
+  hr = bitmap_source->GetPixelFormat(&pixel_format);
+
+  if (FAILED(hr))
+    return false;
+
+  ComPtr<IWICFormatConverter> converter;
+  if (!IsEqualGUID(pixel_format, GUID_WICPixelFormat32bppPBGRA))
+  {
+    hr = factory->CreateFormatConverter(converter.put());
+
+    if (FAILED(hr))
+      return false;
+
+    hr = converter->Initialize(
+      bitmap_source,
+      GUID_WICPixelFormat32bppPBGRA,
+      WICBitmapDitherTypeNone,
+      nullptr,
+      0.0,
+      WICBitmapPaletteTypeCustom);
+
+    if (FAILED(hr))
+      return false;
+
+    copy_source = converter.get();
+  }
+
   BITMAPINFO bitmap_info {};
   bitmap_info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  bitmap_info.bmiHeader.biWidth = static_cast<LONG>(width);
-  bitmap_info.bmiHeader.biHeight = -static_cast<LONG>(height); // top-down DIB
+  bitmap_info.bmiHeader.biWidth = static_cast<LONG>(target_width);
+  bitmap_info.bmiHeader.biHeight = -static_cast<LONG>(target_height);
   bitmap_info.bmiHeader.biPlanes = 1;
   bitmap_info.bmiHeader.biBitCount = 32;
   bitmap_info.bmiHeader.biCompression = BI_RGB;
 
   void* bits = nullptr;
-
   HDC screen_dc = GetDC(nullptr);
+
   if (!screen_dc)
     return false;
 
@@ -465,31 +675,31 @@ static bool loadPngToBitmap(const wchar_t* path, double scale)
   if (!bitmap || !bits)
   {
     if (bitmap)
-    {
       DeleteObject(bitmap);
-    }
     return false;
   }
 
-  hr = converter->CopyPixels(
+  hr = copy_source->CopyPixels(
     nullptr,
-    stride,
-    buffer_size,
+    target_stride,
+    target_buffer_size,
     static_cast<BYTE*>(bits));
 
-  if (FAILED(hr)) {
+  if (FAILED(hr))
+  {
     DeleteObject(bitmap);
     return false;
   }
 
-  // Replace the currently displayed bitmap only after the new one is ready.
-  deleteBitmap();
-
-  g_bitmap = bitmap;
-  g_bitmap_size.cx = static_cast<LONG>(width);
-  g_bitmap_size.cy = static_cast<LONG>(height);
-
+  output_bitmap = bitmap;
   return true;
+}
+
+static void replaceBitmap(HBITMAP bitmap, const SIZE& size)
+{
+  deleteBitmap();
+  g_bitmap = bitmap;
+  g_bitmap_size = size;
 }
 
 static bool EmacsStringToWide(
@@ -621,7 +831,44 @@ static bool SyncOverlay()
     return false;
 
   if (g_bitmap)
+  {
+    if (g_overlay_mode == OverlayMode::Png &&
+        g_size_mode == OverlaySizeMode::Fit &&
+        g_png_source.valid())
+    {
+      SIZE client_size {};
+      if (!getAnchorClientSize(client_size))
+        return false;
+
+      if (client_size.cx != g_last_client_size.cx ||
+          client_size.cy != g_last_client_size.cy)
+      {
+        SIZE target_size {};
+        if (!calculateFitBitmapSize(
+              g_png_source,
+              client_size,
+              g_frame_ratio,
+              target_size))
+        {
+          return false;
+        }
+
+        if (target_size.cx != g_bitmap_size.cx ||
+            target_size.cy != g_bitmap_size.cy)
+        {
+          HBITMAP bitmap = NULL;
+          if (!createBitmapFromSource(g_png_source, target_size, bitmap))
+            return false;
+
+          replaceBitmap(bitmap, target_size);
+        }
+
+        g_last_client_size = client_size;
+      }
+    }
+
     return UpdateOverlayBitmap();
+  }
 
   SIZE size = { g_width, g_height };
   POINT destination {};
@@ -688,6 +935,18 @@ static OverlayPosition decodePosition(int64_t position)
   }
 }
 
+static OverlaySizeMode decodeSizeMode(int64_t size_mode)
+{
+  switch (size_mode)
+  {
+  case 1:
+    return OverlaySizeMode::Fit;
+  case 0:
+  default:
+    return OverlaySizeMode::Fixed;
+  }
+}
+
 /*
  * 単色ウィンドウを生成する
  */
@@ -726,6 +985,7 @@ static emacs_value Fshow(
   g_margin_y = 24;
 
   deleteBitmap();
+  clearPngSource();
 
   // Recreate the layered window when switching between the solid mode and
   // UpdateLayeredWindow-based PNG mode.
@@ -784,6 +1044,8 @@ static emacs_value FshowFile(
   int margin_x = 24;
   int margin_y = 24;
   BYTE alpha = 255;
+  OverlaySizeMode size_mode = OverlaySizeMode::Fixed;
+  double frame_ratio = 0.35;
 
   if (nargs >= 3)
     scale = getFloat(env, args[2]);
@@ -800,16 +1062,75 @@ static emacs_value FshowFile(
   if (nargs >= 7)
     alpha = clampAlpha(getInteger(env, args[6]));
 
-  if (scale <= 0.0 || !std::isfinite(scale))
+  if (nargs >= 8)
+    size_mode = decodeSizeMode(getInteger(env, args[7]));
+
+  if (nargs >= 9)
+    frame_ratio = getFloat(env, args[8]);
+
+  if (size_mode == OverlaySizeMode::Fixed &&
+      (scale <= 0.0 || !std::isfinite(scale)))
+  {
+    return Qnil(env);
+  }
+
+  if (size_mode == OverlaySizeMode::Fit &&
+      (frame_ratio <= 0.0 || frame_ratio > 1.0 || !std::isfinite(frame_ratio)))
+  {
+    return Qnil(env);
+  }
+
+  PngSource decoded_source;
+  if (!decodePngSource(path.c_str(), decoded_source))
+    return Qnil(env);
+
+  SIZE target_size {};
+  SIZE client_size {};
+
+  if (size_mode == OverlaySizeMode::Fixed)
+  {
+    if (!calculateFixedBitmapSize(decoded_source, scale, target_size))
+      return Qnil(env);
+  }
+  else
+  {
+    if (!getAnchorClientSize(client_size))
+      return Qnil(env);
+
+    if (!calculateFitBitmapSize(
+          decoded_source,
+          client_size,
+          frame_ratio,
+          target_size))
+    {
+      return Qnil(env);
+    }
+  }
+
+  HBITMAP bitmap = NULL;
+  if (!createBitmapFromSource(decoded_source, target_size, bitmap))
     return Qnil(env);
 
   g_position = position;
   g_margin_x = margin_x;
   g_margin_y = margin_y;
   g_alpha = alpha;
+  g_size_mode = size_mode;
+  g_scale = scale;
+  g_frame_ratio = frame_ratio;
+  g_png_source = std::move(decoded_source);
 
-  if (!loadPngToBitmap(path.c_str(), scale))
-    return Qnil(env);
+  replaceBitmap(bitmap, target_size);
+
+  if (size_mode == OverlaySizeMode::Fit)
+  {
+    g_last_client_size = client_size;
+  }
+  else
+  {
+    g_last_client_size.cx = 0;
+    g_last_client_size.cy = 0;
+  }
 
   // PNG同士の切り替えでは既存のOverlay HWNDを再利用する
   // Solid -> Png のようにモードが変わる場合は再生成する
@@ -886,6 +1207,7 @@ static emacs_value Fdestroy(
   g_overlay_mode = OverlayMode::None;
 
   deleteBitmap();
+  clearPngSource();
 
   return Qt(env);
 }
@@ -924,8 +1246,8 @@ extern "C" int emacs_module_init(struct emacs_runtime *runtime) noexcept
   BindFunction(
     env,
     "frame-overlay-module-show-file",
-    MakeFunction(env, 2, 7, FshowFile,
-                 "Show PNG FILE on HWND. Optional SCALE, POSITION, MARGIN-X, MARGIN-Y and ALPHA configure the image."));
+    MakeFunction(env, 2, 9, FshowFile,
+                 "Show PNG FILE on HWND. Optional SCALE, POSITION, MARGIN-X, MARGIN-Y, ALPHA, SIZE-MODE and FRAME-RATIO configure the image."));
 
   BindFunction(
     env,
