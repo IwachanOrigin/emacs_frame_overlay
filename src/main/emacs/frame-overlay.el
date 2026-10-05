@@ -4,7 +4,7 @@
 
 ;; Author: Yuji Iwanaga
 ;; Maintainer: Yuji Iwanaga
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: convenience, frames, multimedia
 ;; URL: https://github.com/IwachanOrigin/emacs_frame_overlay

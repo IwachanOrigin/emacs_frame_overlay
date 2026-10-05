@@ -544,7 +544,7 @@ static bool calculateFitBitmapSize(
     max_width / static_cast<double>(source.width);
   const double height_scale =
     max_height / static_cast<double>(source.height);
-  const double scale = std::min(width_scale, height_scale);
+  const double scale = std::min({1.0, width_scale, height_scale});
 
   return calculateFixedBitmapSize(source, scale, size);
 }
