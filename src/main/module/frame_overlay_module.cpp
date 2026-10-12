@@ -6,6 +6,8 @@
 
 #include <windows.h>
 #include <wincodec.h>
+#include "video_player.hpp"
+#include "playback_controller.hpp"
 #include <stdint.h>
 #include <limits.h>
 #include <algorithm>
@@ -56,6 +58,7 @@ struct PngSource
 };
 
 static PngSource g_png_source;
+static PlaybackController g_playback;
 
 static const wchar_t *kClassName = L"EmacsFrameOverlayPrototypeV2";
 
@@ -830,8 +833,13 @@ static bool SyncOverlay()
   if (!g_overlay || !g_anchor || !IsWindow(g_overlay) || !IsWindow(g_anchor))
     return false;
 
+  if (!g_bitmap && g_overlay_mode == OverlayMode::Png)
+    return true; // No decoded video frame has arrived yet.
+
   if (g_bitmap)
   {
+    bool bitmap_changed = false;
+
     if (g_overlay_mode == OverlayMode::Png &&
         g_size_mode == OverlaySizeMode::Fit &&
         g_png_source.valid())
@@ -861,13 +869,51 @@ static bool SyncOverlay()
             return false;
 
           replaceBitmap(bitmap, target_size);
+          bitmap_changed = true;
         }
 
         g_last_client_size = client_size;
       }
     }
 
-    return UpdateOverlayBitmap();
+    POINT destination {};
+    if (!calculateOverlayPosition(g_bitmap_size, destination))
+      return false;
+
+    RECT current_rect {};
+    if (!GetWindowRect(g_overlay, &current_rect))
+      return false;
+
+    const int current_width = current_rect.right - current_rect.left;
+    const int current_height = current_rect.bottom - current_rect.top;
+
+    // A new bitmap or a changed window size requires a layered update.
+    // New video frames use UpdateOverlayBitmap() directly in FvideoPump().
+    if (bitmap_changed ||
+        current_width != g_bitmap_size.cx ||
+        current_height != g_bitmap_size.cy)
+    {
+      return UpdateOverlayBitmap();
+    }
+
+    // Neither the pixels nor the window position have changed.
+    if (current_rect.left == destination.x &&
+        current_rect.top == destination.y)
+    {
+      return true;
+    }
+
+    // Moving an existing layered window does not require re-uploading pixels.
+    // Do not change Z-order or accidentally show a hidden overlay.
+    return SetWindowPos(
+      g_overlay,
+      nullptr,
+      destination.x,
+      destination.y,
+      0,
+      0,
+      SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+      SWP_NOOWNERZORDER) != FALSE;
   }
 
   SIZE size = { g_width, g_height };
@@ -959,6 +1005,8 @@ static emacs_value Fshow(
   (void)nargs;
   (void)data;
 
+  g_playback.stop(); // Solid mode replaces video playback.
+
   const int64_t anchor_value = getInteger(env, args[0]);
   const int64_t owner_value  = getInteger(env, args[1]);
   const int64_t width_value  = getInteger(env, args[2]);
@@ -1004,13 +1052,16 @@ static emacs_value Fshow(
 /*
  * PNG画像を表示する
  */
-static emacs_value FshowFile(
+static emacs_value FshowImageFile(
   emacs_env *env,
   ptrdiff_t nargs,
   emacs_value *args,
-  void *data) noexcept
+  void *data,
+  bool video) noexcept
 {
   (void)data;
+
+  g_playback.stop(); // PNG or first-frame preview replaces playback.
 
   const int64_t anchor_value = getInteger(env, args[0]);
   g_anchor = (HWND)(uintptr_t)anchor_value;
@@ -1081,8 +1132,33 @@ static emacs_value FshowFile(
   }
 
   PngSource decoded_source;
-  if (!decodePngSource(path.c_str(), decoded_source))
+  if (video)
+  {
+    // The player owns Media Foundation and the Source Reader.
+    // In this first-frame preview it lives only for this function call.
+    VideoPlayer player;
+    if (!player.open(path))
+    {
+      return Qnil(env);
+    }
+
+    VideoFrame frame;
+   if (player.readNextFrame(frame) != VideoReadResult::Frame)
+   {
+     return Qnil(env);
+   }
+   
+    // The bitmap-based overlay owns a COPY/MOVE of the decoded pixels.
+    // Therefore VideoPlayer can close before UpdateLayeredWindow runs.    
+    decoded_source.pixels = std::move(frame.pixels);
+    decoded_source.width = frame.width;
+    decoded_source.height = frame.height;
+    decoded_source.stride = frame.stride;
+  }
+  else if (!decodePngSource(path.c_str(), decoded_source))
+  {
     return Qnil(env);
+  }
 
   SIZE target_size {};
   SIZE client_size {};
@@ -1154,6 +1230,167 @@ static emacs_value FshowFile(
   return Qt(env);
 }
 
+// First-frame preview shares the PNG layered-window path.  Full video
+// playback will use a dedicated renderer in a later step.
+static emacs_value FshowFile(
+  emacs_env* env, ptrdiff_t nargs, emacs_value* args, void* data) noexcept
+{
+  return FshowImageFile(env, nargs, args, data, false);
+}
+
+static emacs_value FshowVideoFirstFrame(
+  emacs_env* env, ptrdiff_t nargs, emacs_value* args, void* data) noexcept
+{
+  return FshowImageFile(env, nargs, args, data, true);
+}
+
+// Start continuous decode. Only the Emacs thread creates/owns the HWND.
+// The worker inside PlaybackController never touches Win32 drawing or Emacs.
+static emacs_value FvideoPlay(
+  emacs_env* env, ptrdiff_t nargs, emacs_value* args, void* data) noexcept
+{
+  (void)data;
+
+  const HWND anchor = (HWND)(uintptr_t)getInteger(env, args[0]);
+  if (!IsWindow(anchor))
+    return Qnil(env);
+
+  std::wstring path;
+  if (!EmacsStringToWide(env, args[1], path) || path.empty())
+    return Qnil(env);
+
+  // The first 9 arguments have the same meaning as show-file.
+  double scale = nargs >= 3 ? getFloat(env, args[2]) : 1.0;
+  const OverlayPosition position = nargs >= 4
+    ? decodePosition(getInteger(env, args[3])) : OverlayPosition::BottomRight;
+  const int margin_x = nargs >= 5 ? static_cast<int>(getInteger(env, args[4])) : 24;
+  const int margin_y = nargs >= 6 ? static_cast<int>(getInteger(env, args[5])) : 24;
+  const BYTE alpha = nargs >= 7 ? clampAlpha(getInteger(env, args[6])) : 255;
+  const OverlaySizeMode size_mode = nargs >= 8
+    ? decodeSizeMode(getInteger(env, args[7])) : OverlaySizeMode::Fixed;
+  const double ratio = nargs >= 9 ? getFloat(env, args[8]) : 0.35;
+  const bool loop = nargs >= 10 && getInteger(env, args[9]) != 0;
+
+  if (size_mode == OverlaySizeMode::Fixed &&
+      (scale <= 0.0 || !std::isfinite(scale)))
+    return Qnil(env);
+  if (size_mode == OverlaySizeMode::Fit &&
+      (ratio <= 0.0 || ratio > 1.0 || !std::isfinite(ratio)))
+    return Qnil(env);
+
+  g_playback.stop();
+  g_anchor = anchor;
+  g_owner = GetAncestor(g_anchor, GA_ROOT);
+  if (!IsWindow(g_owner))
+    g_owner = g_anchor;
+
+  if (!ensureOverlayWindow(OverlayMode::Png))
+    return Qnil(env);
+
+  g_position = position;
+  g_margin_x = margin_x;
+  g_margin_y = margin_y;
+  g_alpha = alpha;
+  g_size_mode = size_mode;
+  g_scale = scale;
+  g_frame_ratio = ratio;
+
+  // Wait for the first decoded frame before showing the overlay.
+  ShowWindow(g_overlay, SW_HIDE);
+  deleteBitmap();
+  clearPngSource();
+
+  return g_playback.play(path, loop) ? Qt(env) : Qnil(env);
+}
+
+static emacs_value FvideoStop(
+  emacs_env* env, ptrdiff_t nargs, emacs_value* args, void* data) noexcept
+{
+  (void)nargs;
+  (void)args;
+  (void)data;
+  g_playback.stop(); // Keep the last presented bitmap visible.
+  return Qt(env);
+}
+
+// This function MUST be called by the Emacs/main HWND-owning thread.
+// Moving a frame out of the worker's mailbox does not copy its pixels.
+static emacs_value FvideoPump(
+  emacs_env* env, ptrdiff_t nargs, emacs_value* args, void* data) noexcept
+{
+  (void)nargs;
+  (void)args;
+  (void)data;
+
+  VideoFrame frame;
+  if (!g_playback.takeLatestFrame(frame))
+    return Qnil(env);
+  if (!IsWindow(g_overlay) || !IsWindow(g_anchor))
+    return env->intern(env, "render-error");
+
+  PngSource source;
+  source.pixels = std::move(frame.pixels);
+  source.width = frame.width;
+  source.height = frame.height;
+  source.stride = frame.stride;
+
+  SIZE target_size {};
+  SIZE client_size {};
+  if (g_size_mode == OverlaySizeMode::Fixed)
+  {
+    if (!calculateFixedBitmapSize(source, g_scale, target_size))
+      return env->intern(env, "render-error");
+  }
+  else
+  {
+    if (!getAnchorClientSize(client_size) ||
+        !calculateFitBitmapSize(source, client_size, g_frame_ratio, target_size))
+      return env->intern(env, "render-error");
+  }
+
+  HBITMAP bitmap = NULL;
+  if (!createBitmapFromSource(source, target_size, bitmap))
+    return env->intern(env, "render-error");
+
+  g_png_source = std::move(source); // Keep source pixels for fit-resize.
+  replaceBitmap(bitmap, target_size);
+  g_last_client_size = client_size;
+
+  if (!UpdateOverlayBitmap())
+    return env->intern(env, "render-error");
+  if (!IsWindowVisible(g_overlay))
+    ShowWindow(g_overlay, SW_SHOWNA);
+  return Qt(env);
+}
+
+static emacs_value FvideoStatus(
+  emacs_env* env, ptrdiff_t nargs, emacs_value* args, void* data) noexcept
+{
+  (void)nargs;
+  (void)args;
+  (void)data;
+  switch (g_playback.state())
+  {
+  case PlaybackState::Starting:  return env->intern(env, "starting");
+  case PlaybackState::Playing:   return env->intern(env, "playing");
+  case PlaybackState::Finished:  return env->intern(env, "finished");
+  case PlaybackState::Error:     return env->intern(env, "error");
+  case PlaybackState::Stopped:
+  default:                       return env->intern(env, "stopped");
+  }
+}
+
+static emacs_value FvideoLastError(
+  emacs_env* env, ptrdiff_t nargs, emacs_value* args, void* data) noexcept
+{
+  (void)nargs;
+  (void)args;
+  (void)data;
+  const std::string message = g_playback.lastError();
+  return env->make_string(env, message.c_str(),
+                          static_cast<ptrdiff_t>(message.size()));
+}
+
 static emacs_value Fsync(
   emacs_env *env,
   ptrdiff_t nargs,
@@ -1177,6 +1414,8 @@ static emacs_value Fhide(
   (void)args;
   (void)data;
 
+  g_playback.stop();
+
   if (g_overlay && IsWindow(g_overlay))
   {
     ShowWindow(g_overlay, SW_HIDE);
@@ -1195,6 +1434,8 @@ static emacs_value Fdestroy(
   (void)nargs;
   (void)args;
   (void)data;
+
+  g_playback.stop();
 
   if (g_overlay && IsWindow(g_overlay))
   {
@@ -1248,6 +1489,28 @@ extern "C" int emacs_module_init(struct emacs_runtime *runtime) noexcept
     "frame-overlay-module-show-file",
     MakeFunction(env, 2, 9, FshowFile,
                  "Show PNG FILE on HWND. Optional SCALE, POSITION, MARGIN-X, MARGIN-Y, ALPHA, SIZE-MODE and FRAME-RATIO configure the image."));
+
+  BindFunction(
+    env,
+    "frame-overlay-module-video-first-frame",
+    MakeFunction(env, 2, 9, FshowVideoFirstFrame,
+                 "Decode and show the first video frame using Media Foundation."));
+
+  BindFunction(env, "frame-overlay-module-video-play",
+               MakeFunction(env, 2, 10, FvideoPlay,
+                            "Start video decoding on a worker thread."));
+  BindFunction(env, "frame-overlay-module-video-stop",
+               MakeFunction(env, 0, 0, FvideoStop,
+                            "Stop playback; keep last video image."));
+  BindFunction(env, "frame-overlay-module-video-pump",
+               MakeFunction(env, 0, 0, FvideoPump,
+                            "Present the latest video frame on the Emacs thread."));
+  BindFunction(env, "frame-overlay-module-video-status",
+               MakeFunction(env, 0, 0, FvideoStatus,
+                            "Return playback state as a symbol."));
+  BindFunction(env, "frame-overlay-module-video-last-error",
+               MakeFunction(env, 0, 0, FvideoLastError,
+                            "Return the last decode error as a string."));
 
   BindFunction(
     env,

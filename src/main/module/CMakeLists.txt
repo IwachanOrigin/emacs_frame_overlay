@@ -5,6 +5,8 @@ add_library(
   ${FRAME_OVERLAY_MODULE_TARGET}
   MODULE
   frame_overlay_module.cpp
+  video_player.cpp
+  playback_controller.cpp
 )
 
 target_compile_features(
@@ -19,6 +21,8 @@ target_include_directories(
   "${EMACS_INCLUDE_DIR}"
 )
 
+find_package(Threads REQUIRED)
+
 target_link_libraries(
   ${FRAME_OVERLAY_MODULE_TARGET}
   PRIVATE
@@ -27,6 +31,11 @@ target_link_libraries(
   ole32
   uuid
   windowscodecs
+  Threads::Threads
+  mfplat
+  mfreadwrite
+  mfuuid
+  evr
 )
 
 if(MINGW)

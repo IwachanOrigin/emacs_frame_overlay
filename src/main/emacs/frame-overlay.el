@@ -53,6 +53,19 @@
                   (hwnd file &optional scale position margin-x margin-y alpha
                         size-mode frame-ratio))
 
+(declare-function frame-overlay-module-video-first-frame
+                  "frame-overlay-module"
+                  (hwnd file &optional scale position margin-x margin-y alpha
+                        size-mode frame-ratio))
+
+(declare-function frame-overlay-module-video-play
+                  "frame-overlay-module"
+                  (hwnd file scale position margin-x margin-y alpha size-mode frame-ratio loop))
+(declare-function frame-overlay-module-video-stop "frame-overlay-module" ())
+(declare-function frame-overlay-module-video-pump "frame-overlay-module" ())
+(declare-function frame-overlay-module-video-status "frame-overlay-module" ())
+(declare-function frame-overlay-module-video-last-error "frame-overlay-module" ())
+
 (declare-function frame-overlay-module-sync
                   "frame-overlay-module"
                   ())
@@ -174,12 +187,12 @@ The value must be greater than 0 and no greater than 1.0."
   :type 'integer)
 
 (defcustom frame-overlay-auto-sync t
-  "When non-nil, periodically synchronize the overlay with its Emacs frame."
+  "When non-nil, synchronize the overlay when its Emacs frame changes."
   :type 'boolean)
 
 (defcustom frame-overlay-sync-interval 0.05
-  "Seconds between frame-position synchronization calls.
-This is only used when `frame-overlay-auto-sync' is non-nil."
+  "Obsolete polling interval, retained for compatibility.
+Frame tracking uses Emacs hooks and does not use this interval."
   :type 'number)
 
 (defcustom frame-overlay-playlist nil
@@ -214,6 +227,17 @@ When nil, playlist playback stops after the last image."
   "非nilなら、プレイリスト用PNG探索をサブディレクトリまで再帰的に行う。"
   :type 'boolean)
 
+(defcustom frame-overlay-video-loop nil
+  "When non-nil, restart the video when it reaches the end."
+  :type 'boolean)
+
+(defcustom frame-overlay-video-pump-interval 0.016
+  "Seconds between attempts to display a decoded video frame."
+  :type 'number)
+
+(defvar frame-overlay--video-timer nil)
+
+;; Retained to cancel a timer left by an older, polling-based version.
 (defvar frame-overlay--timer nil)
 (defvar frame-overlay--file nil)
 (defvar frame-overlay--frame nil)
@@ -508,26 +532,106 @@ When nil, playlist playback stops after the last image."
                (> frame-overlay-playlist-interval 0))
     (user-error "frame-overlay-playlist-interval must be greater than zero")))
 
-(defun frame-overlay--stop-timer ()
-  "Stop the synchronization timer if it is running."
+(defun frame-overlay--on-frame-change (frame)
+  "Synchronize the overlay when the tracked Emacs FRAME changes."
+  (when (and frame-overlay-auto-sync
+             (eq frame frame-overlay--frame)
+             (frame-live-p frame))
+    (frame-overlay-module-sync)))
+
+(defun frame-overlay--stop-tracking ()
+  "Unregister the frame hooks and cancel any legacy polling timer."
+  (remove-hook 'move-frame-functions #'frame-overlay--on-frame-change)
+  (remove-hook 'window-size-change-functions #'frame-overlay--on-frame-change)
   (when (timerp frame-overlay--timer)
-    (cancel-timer frame-overlay--timer)
-    (setq frame-overlay--timer nil)))
+    (cancel-timer frame-overlay--timer))
+  (setq frame-overlay--timer nil))
 
-(defun frame-overlay--start-timer ()
-  "Restart the synchronization timer according to current settings."
-  (frame-overlay--stop-timer)
-
+(defun frame-overlay--start-tracking ()
+  "Watch frame movement and size changes using Emacs hooks."
+  (frame-overlay--stop-tracking)
   (when frame-overlay-auto-sync
-    (unless (and (numberp frame-overlay-sync-interval)
-                 (> frame-overlay-sync-interval 0))
-      (user-error "frame-overlay-sync-interval must be greater than zero"))
+    (add-hook 'move-frame-functions #'frame-overlay--on-frame-change)
+    (add-hook 'window-size-change-functions #'frame-overlay--on-frame-change)))
 
-    (setq frame-overlay--timer
-          (run-with-timer
-           0
-           frame-overlay-sync-interval
-           #'frame-overlay-module-sync))))
+;; Old internal names are retained for configurations that call them.
+(defalias 'frame-overlay--start-timer #'frame-overlay--start-tracking)
+(defalias 'frame-overlay--stop-timer #'frame-overlay--stop-tracking)
+
+(defun frame-overlay--video-tick ()
+  "Display the newest decoded frame on the Emacs thread."
+  (condition-case err
+      (let ((result (frame-overlay-module-video-pump)))
+        (when (eq result 'render-error)
+          (error "Failed to render video frame"))
+        (pcase (frame-overlay-module-video-status)
+          ('finished (frame-overlay-video-stop))
+          ('error
+           (let ((details (frame-overlay-module-video-last-error)))
+             (frame-overlay-video-stop)
+             (message "Frame overlay video error: %s" details)))))
+    (error
+     (frame-overlay-video-stop)
+     (message "Frame overlay video stopped: %s" (error-message-string err)))))
+
+(defun frame-overlay-video-stop ()
+  "Stop video playback but leave the last video image visible."
+  (interactive)
+  (when (timerp frame-overlay--video-timer)
+    (cancel-timer frame-overlay--video-timer))
+  (setq frame-overlay--video-timer nil)
+  ;; ERT tests and older modules may not provide this entry point yet.
+  (when (fboundp 'frame-overlay-module-video-stop)
+    (frame-overlay-module-video-stop))
+  t)
+
+(defun frame-overlay-video-status ()
+  "Return the native playback state (starting, playing, finished, etc.)."
+  (interactive)
+  (let ((status (frame-overlay-module-video-status)))
+    (when (called-interactively-p 'interactive)
+      (message "Frame overlay video: %s" status))
+    status))
+
+(defun frame-overlay-video-play (file &optional frame)
+  "Play local video FILE on Emacs FRAME without audio."
+  (interactive "fVideo file: ")
+  (frame-overlay--validate-image-options)
+  (unless (and (numberp frame-overlay-video-pump-interval)
+               (> frame-overlay-video-pump-interval 0))
+    (user-error "frame-overlay-video-pump-interval must be positive"))
+  (let ((frame (or frame (selected-frame)))
+        (file (expand-file-name file)))
+    (unless (eq (window-system frame) 'w32)
+      (user-error "Video playback supports native Windows Emacs only"))
+    (unless (file-readable-p file)
+      (user-error "Video file is not readable: %s" file))
+
+    ;; Exactly one source (PNG playlist, image, or video) owns the overlay.
+    (frame-overlay-playlist--stop-timer)
+    (frame-overlay-video-stop)
+
+    (unless (frame-overlay-module-video-play
+             (frame-overlay--native-id frame 'window-id)
+             file
+             (float frame-overlay-scale)
+             (frame-overlay--position-code)
+             frame-overlay-margin-x
+             frame-overlay-margin-y
+             frame-overlay-image-alpha
+             (frame-overlay--size-mode-code)
+             (float frame-overlay-frame-ratio)
+             (if frame-overlay-video-loop 1 0))
+      (error "Failed to start video playback: %s" file))
+
+    (setq frame-overlay--file nil
+          frame-overlay--frame frame)
+    (frame-overlay--start-tracking)
+    (setq frame-overlay--video-timer
+          (run-with-timer 0 frame-overlay-video-pump-interval
+                          #'frame-overlay--video-tick))
+    (frame-overlay--log "Video playback started: %s" file)
+    t))
 
 (defun frame-overlay-playlist--stop-timer ()
   "Stop the playlist timer if it is running."
@@ -553,6 +657,7 @@ When nil, playlist playback stops after the last image."
   "Show the solid-color prototype overlay for FRAME."
   (interactive)
   (frame-overlay-playlist--stop-timer)
+  (frame-overlay-video-stop)
 
   (let ((frame (or frame (selected-frame))))
     (unless (eq (window-system frame) 'w32)
@@ -569,7 +674,7 @@ When nil, playlist playback stops after the last image."
 
       (setq frame-overlay--file nil
             frame-overlay--frame frame)
-      (frame-overlay--start-timer)
+      (frame-overlay--start-tracking)
       (frame-overlay--log "Frame overlay shown: hwnd=%s" anchor)
 
       t)))
@@ -578,6 +683,7 @@ When nil, playlist playback stops after the last image."
   "Internal implementation for showing PNG FILE on FRAME.
 Unlike `frame-overlay-show-file', this function does not stop playlist playback."
   (frame-overlay--validate-image-options)
+  (frame-overlay-video-stop)
 
   (let* ((frame (or frame (selected-frame)))
          (file (expand-file-name file)))
@@ -602,7 +708,7 @@ Unlike `frame-overlay-show-file', this function does not stop playlist playback.
 
       (setq frame-overlay--file file
             frame-overlay--frame frame)
-      (frame-overlay--start-timer)
+      (frame-overlay--start-tracking)
       (frame-overlay--log
        "PNG overlay shown: %s (size-mode %s, scale %.3g, frame-ratio %.3g, %s)"
        file frame-overlay-size-mode frame-overlay-scale
@@ -618,6 +724,40 @@ playlist playback.  The overlay image itself remains visible."
   (interactive "fPNG file: ")
   (frame-overlay-playlist--stop-timer)
   (frame-overlay--show-file file frame))
+
+(defun frame-overlay-video-show-first-frame (file &optional frame)
+  "Display the first decoded video frame from FILE on Emacs FRAME.
+This diagnostic v0.3.0 API displays one frame only; it does not play video."
+  (interactive "fVideo file: ")
+  (frame-overlay--validate-image-options)
+  (frame-overlay-video-stop)
+
+  (let ((frame (or frame (selected-frame)))
+        (file (expand-file-name file)))
+    (unless (eq (window-system frame) 'w32)
+      (user-error "Video preview supports native Windows Emacs only"))
+    (unless (file-readable-p file)
+      (user-error "Video file is not readable: %s" file))
+
+    (unless (frame-overlay-module-video-first-frame
+             (frame-overlay--native-id frame 'window-id)
+             file
+             (float frame-overlay-scale)
+             (frame-overlay--position-code)
+             frame-overlay-margin-x
+             frame-overlay-margin-y
+             frame-overlay-image-alpha
+             (frame-overlay--size-mode-code)
+             (float frame-overlay-frame-ratio))
+      (error "Failed to decode/display first video frame: %s" file))
+
+    (frame-overlay-playlist--stop-timer)
+    ;; The current image no longer comes from a PNG file.
+    (setq frame-overlay--file nil
+          frame-overlay--frame frame)
+    (frame-overlay--start-tracking)
+    (frame-overlay--log "Video first frame displayed: %s" file)
+    t))
 
 (defun frame-overlay-refresh ()
   "Reload the current PNG using the latest `frame-overlay' settings.
@@ -774,8 +914,9 @@ Frame-position synchronization continues according to
   "Hide the overlay and stop synchronization."
   (interactive)
   (frame-overlay-playlist--stop-timer)
-  (frame-overlay--stop-timer)
-  
+  (frame-overlay--stop-tracking)
+  (frame-overlay-video-stop)
+
   (unless (frame-overlay-module-hide)
     (error "Failed to hide frame overlay"))
   
@@ -788,7 +929,8 @@ The current image and frame are forgotten.
 The configured playlist itself is not modified."
   (interactive)
   (frame-overlay-playlist--stop-timer)
-  (frame-overlay--stop-timer)
+  (frame-overlay--stop-tracking)
+  (frame-overlay-video-stop)
 
   (unless (frame-overlay-module-destroy)
     (error "Failed to destroy frame overlay"))
@@ -851,6 +993,22 @@ DIRECTORY を省略した場合は`frame-overlay-playlist-directory' を使う�
   (setq frame-overlay-playlist-directory directory)
   (frame-overlay-playlist-load-directory directory)
   (frame-overlay-playlist-start reset))
+
+(defun frame-overlay--shutdown ()
+  "Release native hooks and worker resources before Emacs exits."
+  (frame-overlay-playlist--stop-timer)
+  (frame-overlay--stop-tracking)
+  (frame-overlay-video-stop)
+  (when (fboundp 'frame-overlay-module-destroy)
+    (frame-overlay-module-destroy)))
+
+(defun frame-overlay--on-frame-delete (frame)
+  "Release the overlay if its owning Emacs FRAME is deleted."
+  (when (eq frame frame-overlay--frame)
+    (frame-overlay-destroy)))
+
+(add-hook 'delete-frame-functions #'frame-overlay--on-frame-delete)
+(add-hook 'kill-emacs-hook #'frame-overlay--shutdown)
 
 (provide 'frame-overlay)
 ;;; frame-overlay.el ends here
